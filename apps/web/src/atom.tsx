@@ -5,14 +5,16 @@ import { ICON, toneOf } from "./plan";
 import { MapView, type MapHandle } from "./MapView";
 import type { Ref } from "react";
 
-/* The network drawn as an atom: the router is the nucleus, every device orbits it on a shell
- * grouped by what kind of thing it is. Risky devices glow red and pulse. */
+/* The network drawn as an atom: the router is the nucleus, every device orbits it.
+ * Devices are grouped by what kind of thing they are; a kind with many devices spreads
+ * across several concentric rings (electron shells) so it never collapses into one solid
+ * donut. Each ring turns at its own speed. Risky devices sit on the inner rings, glow red,
+ * pulse, and send a packet of data toward the core; calm devices are quiet points of light. */
 
 const ORDER: Kind[] = ["phone", "computer", "tv", "speaker", "console", "camera", "printer", "nas", "smart", "unknown"];
-const NODE = 11; // spacing budget per device around a ring
 
 type Placed = { d: DeviceReport; x: number; y: number; r: number };
-type Shell = { kind: Kind; radius: number; nodes: Placed[]; dur: number; dir: 1 | -1 };
+type Ring = { kind: Kind; radius: number; nodes: Placed[]; dur: number; dir: 1 | -1 };
 
 export function Atom({
   devices,
@@ -44,44 +46,66 @@ export function Atom({
 
   const router = devices.find((d) => d.ip === gateway) ?? devices.find((d) => d.kind === "router");
 
-  const { shells, size } = useMemo(() => {
+  // Dots shrink as the crowd grows, so a big network reads as fine texture instead of a blob.
+  const count = devices.length;
+  const base = count > 120 ? 6 : count > 60 ? 7.5 : count > 30 ? 9.5 : 12;
+  const showIcons = base >= 9.5;
+  const arc = base * 2 + 11; // keep neighbouring dots on a ring from touching
+
+  const { rings, counts, size } = useMemo(() => {
     const rest = devices.filter((d) => d !== router);
     const byKind = new Map<Kind, DeviceReport[]>();
     for (const d of rest) byKind.set(d.kind, [...(byKind.get(d.kind) ?? []), d]);
     const kinds = ORDER.filter((k) => byKind.has(k));
-    let radius = 130;
-    const shells: Shell[] = kinds.map((kind, i) => {
+    const counts = kinds.map((k) => [k, (byKind.get(k) ?? []).length] as const);
+
+    const rings: Ring[] = [];
+    let radius = 108;
+    let ri = 0;
+    for (const kind of kinds) {
+      // Worst first, so devices that need attention land on the inner rings, near the core.
       const list = (byKind.get(kind) ?? []).sort((a, b) => (worstOf(b) ? 1 : 0) - (worstOf(a) ? 1 : 0));
-      // Give a crowded shell enough room so its dots don't touch.
-      const need = (list.length * NODE) / (2 * Math.PI);
-      radius = Math.max(radius + 66, need);
-      const phase = i * 0.6;
-      const nodes = list.map((d, j) => {
-        const a = (j / list.length) * Math.PI * 2 + phase;
-        return { d, x: Math.cos(a) * radius, y: Math.sin(a) * radius, r: radius };
-      });
-      return { kind, radius, nodes, dur: 70 + i * 26, dir: i % 2 ? -1 : (1 as 1 | -1) };
-    });
-    return { shells, size: (radius + 60) * 2 };
-  }, [devices, router, worstOf]);
+      let idx = 0;
+      let firstOfKind = true;
+      while (idx < list.length) {
+        radius += firstOfKind ? 30 : 26; // a little extra breathing room between kinds
+        firstOfKind = false;
+        const perRing = Math.max(5, Math.floor((2 * Math.PI * radius) / arc));
+        const take = Math.min(perRing, list.length - idx);
+        const phase = ri * 0.7;
+        const nodes: Placed[] = [];
+        for (let j = 0; j < take; j++) {
+          const a = (j / take) * Math.PI * 2 + phase;
+          nodes.push({ d: list[idx + j], x: Math.cos(a) * radius, y: Math.sin(a) * radius, r: radius });
+        }
+        rings.push({ kind, radius, nodes, dur: 64 + ri * 9, dir: ri % 2 ? -1 : 1 });
+        idx += take;
+        ri++;
+      }
+    }
+    return { rings, counts, size: (radius + 54) * 2 };
+  }, [devices, router, worstOf, arc]);
 
   const half = size / 2;
-  const maxR = shells.length ? shells[shells.length - 1].radius : 130;
+  const maxR = rings.length ? rings[rings.length - 1].radius : 120;
   const moving = typeof matchMedia === "undefined" || !matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const nodeEl = (p: Placed, spin: boolean, i: number) => {
+
+  const nodeEl = (p: Placed, i: number) => {
     const d = p.d;
     const worst = worstOf(d);
     const tone = toneOf(worst);
     const off = presence?.[keyOf(d)] && !presence[keyOf(d)].online;
     const sel = d.ip === selected;
+    const rad = (sel ? base + 4 : worst ? base + 2.5 : base);
     const dur = (p.r / 90 + 1.6).toFixed(2);
     const begin = `${-((i * 1.7) % 3).toFixed(2)}s`;
     return (
       <g key={d.ip} transform={`translate(${half + p.x} ${half + p.y})`} opacity={dim(d) ? 0.12 : off ? 0.4 : 1}>
-        <line x1={0} y1={0} x2={-p.x} y2={-p.y} stroke={worst ? tone : "var(--line)"} strokeWidth={worst ? 1.1 : 0.6} opacity={worst ? 0.5 : 0.28} />
-        {/* A packet of data travelling along the bond toward the router. */}
-        {moving && !off && !dim(d) && (
-          <circle r={worst ? 2.1 : 1.6} fill={worst ? tone : "var(--accent)"}>
+        {/* A faint spoke to the core; it brightens only for devices that need attention. */}
+        <line x1={0} y1={0} x2={-p.x} y2={-p.y} stroke={worst ? tone : "var(--line)"} strokeWidth={worst ? 1.1 : 0.4} opacity={worst ? 0.5 : 0.12} />
+        {/* Only risky devices send a packet toward the router — signal over noise. */}
+        {moving && worst && !off && !dim(d) && (
+          <circle r={2.1} fill={tone}>
             <animateMotion path={`M0 0 L${-p.x} ${-p.y}`} dur={`${dur}s`} begin={begin} repeatCount="indefinite" />
             <animate attributeName="opacity" values="0;1;0.9;0" keyTimes="0;0.15;0.7;1" dur={`${dur}s`} begin={begin} repeatCount="indefinite" />
           </circle>
@@ -101,14 +125,14 @@ export function Atom({
           }}
           onPointerLeave={() => setHover(null)}
         >
-          <circle r={sel ? 15 : 13} fill="var(--panel)" stroke={tone} strokeWidth={sel ? 3 : 1.6} style={{ filter: `drop-shadow(0 0 ${worst ? 7 : 3}px ${tone})` }} />
-          {!spin && (
-            <svg x={-6.5} y={-6.5} width={13} height={13} viewBox="0 0 24 24" className="pointer-events-none">
-              <path d={ICON[d.kind]} fill="none" stroke={tone} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+          <circle r={rad} fill="var(--panel)" stroke={tone} strokeWidth={sel ? 3 : worst ? 1.8 : 1.3} style={{ filter: worst || sel ? `drop-shadow(0 0 ${worst ? 7 : 4}px ${tone})` : undefined }} />
+          {showIcons && (
+            <svg x={-rad * 0.52} y={-rad * 0.52} width={rad * 1.04} height={rad * 1.04} viewBox="0 0 24 24" className="pointer-events-none">
+              <path d={ICON[d.kind]} fill="none" stroke={tone} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           )}
-          {worst && <circle className="risky-node pointer-events-none" r={3} fill={tone} />}
-          {isNew(d) && <circle r={sel ? 19 : 17} fill="none" stroke="var(--accent)" strokeWidth={1.2} strokeDasharray="3 3" className="pointer-events-none" />}
+          {worst && <circle className="risky-node pointer-events-none" r={rad * 0.32} fill={tone} />}
+          {isNew(d) && <circle r={rad + 4} fill="none" stroke="var(--accent)" strokeWidth={1.2} strokeDasharray="3 3" className="pointer-events-none" />}
         </g>
       </g>
     );
@@ -127,24 +151,32 @@ export function Atom({
       role="group"
       aria-label="Your network as an atom"
     >
-      {/* Faint shell guides and a slim radar sweep behind everything. */}
       <defs>
         <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0" stopColor="var(--accent)" stopOpacity="0" />
           <stop offset="1" stopColor="var(--accent)" stopOpacity="0.55" />
         </linearGradient>
+        <radialGradient id="core-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="var(--accent)" stopOpacity="0.16" />
+          <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
+        </radialGradient>
       </defs>
-      <g opacity={0.6}>
-        {shells.map((s) => (
-          <circle key={s.kind} cx={half} cy={half} r={s.radius} fill="none" stroke="var(--line)" strokeWidth={0.7} strokeDasharray="2 7" />
+
+      {/* A soft glow behind the whole atom. */}
+      <circle cx={half} cy={half} r={maxR + 30} fill="url(#core-glow)" />
+
+      {/* Faint orbit guides, one per ring, and a slow radar sweep. */}
+      <g opacity={0.5}>
+        {rings.map((s, i) => (
+          <circle key={i} cx={half} cy={half} r={s.radius} fill="none" stroke="var(--line)" strokeWidth={0.6} strokeDasharray="2 8" />
         ))}
       </g>
       <line className="radar" x1={half} y1={half} x2={half + maxR} y2={half} stroke="url(#beam)" strokeWidth={2} />
 
-      {/* Each shell is a rotating group; its label stays still on top. */}
-      {shells.map((s) => (
-        <g key={s.kind} className="shell" style={{ animationDuration: `${s.dur}s`, animationDirection: s.dir === -1 ? "reverse" : "normal" }}>
-          {s.nodes.map((p, i) => nodeEl(p, s.nodes.length > 10, i))}
+      {/* Each ring is its own rotating group, turning at its own speed and direction. */}
+      {rings.map((s, i) => (
+        <g key={i} className="shell" style={{ animationDuration: `${s.dur}s`, animationDirection: s.dir === -1 ? "reverse" : "normal" }}>
+          {s.nodes.map((p, j) => nodeEl(p, j + i))}
         </g>
       ))}
 
@@ -164,7 +196,6 @@ export function Atom({
           {devices.length} devices
         </text>
       </g>
-
     </svg>
   );
 
@@ -174,14 +205,14 @@ export function Atom({
         {atom}
       </MapView>
 
-      {/* The rings, listed quietly in the corner instead of floating over the map. */}
+      {/* The groups, listed quietly in the corner instead of floating over the map. */}
       <div data-ui className="glass pointer-events-none absolute z-10 hidden rounded-xl px-3 py-2.5 md:block" style={{ left: insets.l + 12, top: insets.t + 12 }}>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Rings, inner to outer</div>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">What's orbiting</div>
         <ul className="space-y-0.5">
-          {shells.map((s) => (
-            <li key={s.kind} className="flex items-center justify-between gap-4 font-mono text-[12px] text-muted">
-              <span>{KIND_NAME[s.kind].toLowerCase()}</span>
-              <span className="text-ink">{s.nodes.length}</span>
+          {counts.map(([kind, n]) => (
+            <li key={kind} className="flex items-center justify-between gap-4 font-mono text-[12px] text-muted">
+              <span>{KIND_NAME[kind].toLowerCase()}</span>
+              <span className="text-ink">{n}</span>
             </li>
           ))}
         </ul>

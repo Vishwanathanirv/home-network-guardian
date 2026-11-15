@@ -212,7 +212,13 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
             <dl className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px]">
               {info.name && <Row k="Calls itself">{info.name}</Row>}
               {info.model && <Row k="Model">{info.model}</Row>}
-              <Row k="Made by">{info.maker && d.vendor && !d.vendor.toLowerCase().includes(info.maker.toLowerCase().split(/[ ,]/)[0]) ? `${info.maker} (network chip by ${d.vendor})` : (info.maker ?? d.vendor ?? (privateMac ? "Hidden (private address)" : "Unknown"))}</Row>
+              {(() => {
+                const maker =
+                  info.maker && d.vendor && !d.vendor.toLowerCase().includes(info.maker.toLowerCase().split(/[ ,]/)[0])
+                    ? `${info.maker} (network chip by ${d.vendor})`
+                    : (info.maker ?? d.vendor ?? (privateMac ? "Hidden (private address)" : null));
+                return maker ? <Row k="Made by">{maker}</Row> : null;
+              })()}
               {d.os && <Row k="Software">{d.os}</Row>}
               {info.netbios && (
                 <Row k="Windows name">
@@ -228,14 +234,21 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
               <Row k="Address" mono>
                 {d.ip}
               </Row>
-              <Row k="Hardware ID" mono>
-                {d.mac ?? "unknown"}
-                {privateMac && <span className="ml-2 rounded-full bg-panel-2 px-2 py-px font-sans text-[11.5px] font-semibold text-muted">private</span>}
-              </Row>
+              {d.mac && (
+                <Row k="Hardware ID" mono>
+                  {d.mac}
+                  {privateMac && <span className="ml-2 rounded-full bg-panel-2 px-2 py-px font-sans text-[11.5px] font-semibold text-muted">private</span>}
+                </Row>
+              )}
               {info.rtt !== undefined && <Row k="Response time">{info.rtt} ms{info.rtt > 30 ? " (probably on Wi-Fi far from the router, or asleep)" : info.rtt <= 3 ? " (probably wired)" : ""}</Row>}
               <Row k="Doing">{activity(d)}</Row>
               <Row k="Seen">{history.length > 1 ? `In ${seen} of ${history.length} scans` : "In this scan"}</Row>
             </dl>
+            {!d.mac && !info.maker && !d.vendor && !d.hostname && !info.name && (
+              <p className="mt-2.5 rounded-lg border border-line bg-panel-2 px-3 py-2 text-[12.5px] leading-relaxed text-muted">
+                This device is on the far side of your router, so it only answers its address — it can't share its name, maker, or hardware ID from there. To get full details, run the scan on the network your own computer is joined to (leave off the <span className="font-mono text-faint">--network</span> option so it picks that automatically).
+              </p>
+            )}
           </Section>
 
           {!!info.services?.length && (
@@ -250,7 +263,7 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
             </Section>
           )}
 
-          <Section title={`Why we think it's a ${KIND_NAME[d.kind].toLowerCase()}`}>
+          <Section title={`Why we think it's ${/^[aeiou]/i.test(KIND_NAME[d.kind]) ? "an" : "a"} ${KIND_NAME[d.kind].toLowerCase()}`}>
             <div className="flex items-center gap-2 text-[13px] font-semibold text-muted">
               <span className="flex gap-0.5" aria-hidden>
                 {[1, 2, 3].map((n) => (
