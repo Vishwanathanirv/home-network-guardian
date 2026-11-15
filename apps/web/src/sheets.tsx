@@ -41,6 +41,13 @@ export function Steps({ issue }: { issue: Issue }) {
   return (
     <div className="text-[14.5px] leading-relaxed">
       <p className="text-muted">{issue.why}</p>
+      {issue.cve && (
+        <a href={`https://nvd.nist.gov/vuln/detail/${issue.cve}`} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-0.5 font-mono text-[12px] font-semibold hover:border-faint">
+          <span className="h-1.5 w-1.5 rounded-full bg-risk" />
+          {issue.cve}
+          <span className="text-faint">↗</span>
+        </a>
+      )}
       <ol className="mt-2 list-decimal space-y-1 pl-5">
         {issue.steps.map((s) => (
           <li key={s}>{s}</li>

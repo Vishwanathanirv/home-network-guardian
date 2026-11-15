@@ -235,3 +235,219 @@ body {
     animation: none;
   }
 }
+
+/* The printable security report: always a light document, tidy on paper. */
+.rp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  background: #1b2227;
+  color: #15202b;
+}
+.rp-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+.rp-bar-title {
+  font-weight: 700;
+}
+.rp-doc {
+  max-width: 50rem;
+  margin: 1.5rem auto;
+  background: #fff;
+  color: #15202b;
+  padding: 2.4rem 2.6rem 1.6rem;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.6);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.rp-doc h1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.rp-doc h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 1.6rem 0 0.6rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 2px solid #eceef0;
+}
+.rp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  border-bottom: 3px solid #15202b;
+  padding-bottom: 1rem;
+}
+.rp-sub {
+  color: #5b6672;
+  margin-top: 0.25rem;
+}
+.rp-grade {
+  text-align: center;
+  border: 3px solid;
+  border-radius: 12px;
+  padding: 0.5rem 0.9rem;
+  min-width: 5rem;
+}
+.rp-grade-letter {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.rp-grade-num {
+  font-size: 0.75rem;
+  color: #5b6672;
+  font-weight: 600;
+}
+.rp-cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.6rem;
+  margin: 1.2rem 0;
+}
+.rp-card {
+  border: 1px solid #e3e6e9;
+  border-radius: 8px;
+  padding: 0.6rem;
+  text-align: center;
+}
+.rp-card-n {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+.rp-card-l {
+  font-size: 0.72rem;
+  color: #5b6672;
+  font-weight: 600;
+}
+.rp-lead {
+  font-size: 0.98rem;
+}
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.rp-table th {
+  text-align: left;
+  color: #5b6672;
+  font-weight: 600;
+  border-bottom: 2px solid #e3e6e9;
+  padding: 0.35rem 0.5rem;
+}
+.rp-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #eef0f2;
+  vertical-align: top;
+}
+.rp-right {
+  text-align: right;
+}
+.rp-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.rp-muted {
+  color: #6b747e;
+}
+.rp-issue {
+  border: 1px solid #e3e6e9;
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  margin-top: 0.6rem;
+  page-break-inside: avoid;
+}
+.rp-issue-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.rp-tag,
+.rp-cve,
+.rp-when {
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 0.05rem 0.5rem;
+  background: #f0f2f4;
+  color: #4a535d;
+}
+.rp-cve {
+  font-family: var(--font-mono);
+  background: #fdeaea;
+  color: #b3242f;
+}
+.rp-when {
+  margin-left: auto;
+  background: none;
+  color: #6b747e;
+}
+.rp-where {
+  color: #6b747e;
+  font-size: 0.82rem;
+  margin-top: 0.15rem;
+}
+.rp-why {
+  margin-top: 0.4rem;
+}
+.rp-steps {
+  margin: 0.4rem 0 0 1.1rem;
+  padding: 0;
+}
+.rp-steps li {
+  margin-bottom: 0.15rem;
+}
+.rp-foot {
+  margin-top: 1.6rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid #e3e6e9;
+  color: #8893a0;
+  font-size: 0.78rem;
+}
+.rp-break {
+  page-break-before: auto;
+}
+@media (max-width: 640px) {
+  .rp-doc {
+    padding: 1.4rem 1.1rem;
+    margin: 0;
+    border-radius: 0;
+  }
+  .rp-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .rp-table {
+    font-size: 0.78rem;
+  }
+}
+@media print {
+  .rp-backdrop {
+    position: static;
+    overflow: visible;
+    background: #fff;
+  }
+  .rp-bar {
+    display: none;
+  }
+  .rp-doc {
+    box-shadow: none;
+    margin: 0;
+    max-width: none;
+    padding: 0;
+  }
+}

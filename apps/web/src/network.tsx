@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { isCgnat, isPrivate, KIND_NAME, serviceName, type DeviceReport, type Internet, type Kind, type Report } from "@lamplight/core";
 import { ScoreRing } from "./device";
 import { displayName, gradeOf, issueKey, keyOf, scoreOf, useDone, useHome, usePlaces } from "./lib";
@@ -131,6 +132,7 @@ function InternetPanel({ net, report, onPick, name }: { net?: Internet; report: 
 }
 
 export function NetworkSheet({ onClose, onPick }: { onClose: () => void; onPick: (ip: string) => void }) {
+  const navigate = useNavigate();
   const { report, now } = useHome();
   const places = usePlaces();
   const done = useDone();
@@ -244,6 +246,9 @@ export function NetworkSheet({ onClose, onPick }: { onClose: () => void; onPick:
       )}
 
       <Section title="Keep a copy">
+        <button className="btn btn-accent mb-2 w-full" onClick={() => navigate("/report")}>
+          Open the full security report
+        </button>
         <div className="flex flex-wrap gap-2">
           <button className="btn" onClick={() => save(`lamplight-report-${now.scan.at.slice(0, 10)}.md`, markdown(report, name, done), "text/markdown")}>
             Download the report

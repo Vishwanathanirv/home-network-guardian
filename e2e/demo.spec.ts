@@ -167,3 +167,15 @@ test("the atom view draws the network and opens a device, with friendly names", 
   const table = page.getByRole("region", { name: "All devices" });
   await expect(table.getByText("Smart home gadget", { exact: false }).first()).toBeVisible();
 });
+
+test("the security report lists devices, CVEs and fixes, and opens from the network page", async ({ page }) => {
+  await page.goto("/network");
+  await details(page).getByRole("button", { name: "Open the full security report" }).click();
+  await expect(page.getByRole("heading", { name: "Home network security report" })).toBeVisible();
+  await expect(page.getByText(/match a published vulnerability/)).toBeVisible();
+  await expect(page.getByText("CVE-2016-7406").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Devices, weakest first" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What to do, most urgent first" })).toBeVisible();
+  // A known-vulnerability link points to the public database.
+  await expect(page.getByRole("link", { name: /CVE-2016-7406/ }).first()).toHaveAttribute("href", "https://nvd.nist.gov/vuln/detail/CVE-2016-7406");
+});

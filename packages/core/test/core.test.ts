@@ -153,3 +153,15 @@ describe("the connection to the internet", () => {
     expect(r.network.map((i) => i.id)).toContain("dns-hijack");
   });
 });
+
+describe("known-vulnerability (CVE) matches from version banners", () => {
+  const issue = (port: { port: number; proto: "tcp"; product?: string; version?: string }) => checkDevice(dev({ ports: [port] })).issues.find((i) => i.id === "outdated");
+  it("flags old Dropbear, Heartbleed and a vulnerable camera web server, each with its CVE", () => {
+    expect(issue({ port: 22, proto: "tcp", product: "Dropbear sshd", version: "2014.63" })?.cve).toBe("CVE-2016-7406");
+    expect(issue({ port: 443, proto: "tcp", product: "OpenSSL", version: "1.0.1f" })?.cve).toBe("CVE-2014-0160");
+    expect(issue({ port: 80, proto: "tcp", product: "GoAhead-Webs", version: "2.5" })?.cve).toBe("CVE-2017-17562");
+  });
+  it("does not flag a patched-range version", () => {
+    expect(issue({ port: 22, proto: "tcp", product: "Dropbear sshd", version: "2020.81" })).toBeUndefined();
+  });
+});

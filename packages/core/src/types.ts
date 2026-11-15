@@ -90,6 +90,8 @@ export type Issue = {
   /** Steps a non-expert can follow. */
   steps: string[];
   port?: number;
+  /** A known-vulnerability ID, when this problem matches a published one (e.g. "CVE-2024-6387"). */
+  cve?: string;
 };
 
 /* ───────────── Live mode: what the scanner's local server sends the site */

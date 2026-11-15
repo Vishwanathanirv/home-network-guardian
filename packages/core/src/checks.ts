@@ -66,17 +66,45 @@ function cmp(a: string, b: string) {
 }
 
 /** Software versions with well-known, actively exploited holes. Deliberately short and certain. */
-function knownBad(p: Port): { title: string; why: string; severity: Severity } | undefined {
-  const product = `${p.product ?? ""} ${p.banner ?? ""}`;
-  const v = (p.version ?? product).match(/\d+(?:\.\d+)+(?:p\d+)?/)?.[0];
-  if (/vsftpd/i.test(product) && /2\.3\.4/.test(`${p.version ?? ""} ${product}`)) return { severity: "critical", title: "Backdoored FTP server", why: "vsftpd 2.3.4 is the release that was shipped with a hidden backdoor: anyone can get a root command line on this device." };
-  if (/openssh/i.test(product) && v && cmp(v, "8.5p1") >= 0 && cmp(v, "9.8") < 0) {
-    // Distributions patch old versions without changing the number, so we can't be sure.
-    const distro = /debian|ubuntu|el\d|fedora|alpine|raspbian/i.test(`${p.version ?? ""} ${product}`);
-    return { severity: distro ? "medium" : "high", title: `OpenSSH ${v} may have the "regreSSHion" hole`, why: `OpenSSH 8.5p1 to 9.7p1 has a bug (CVE-2024-6387) that can let an attacker run code as root without logging in.${distro ? " Linux distributions fixed it without changing the version number, so if this machine has had its updates since July 2024 it is already safe." : ""}` };
+type Bad = { title: string; why: string; severity: Severity; cve?: string };
+
+/**
+ * A small, curated list of published holes we can spot from a version banner. It's deliberately
+ * short and certain: every entry is a well-known CVE with a clear version range, so a match is
+ * real, not a guess. It is not a full vulnerability scan — missing here doesn't mean safe.
+ */
+const CVE_RULES: { when: RegExp; range?: [string, string]; exact?: RegExp; make: (v: string | undefined, text: string) => Bad }[] = [
+  { when: /vsftpd/i, exact: /2\.3\.4/, make: () => ({ severity: "critical", cve: "CVE-2011-2523", title: "Backdoored FTP server (vsftpd 2.3.4)", why: "vsftpd 2.3.4 is the release that shipped with a hidden backdoor: anyone can open a root command line on this device." }) },
+  {
+    when: /openssh/i,
+    range: ["8.5p1", "9.8"],
+    make: (v, text) => {
+      const distro = /debian|ubuntu|el\d|fedora|alpine|raspbian/i.test(text);
+      return { severity: distro ? "medium" : "high", cve: "CVE-2024-6387", title: `OpenSSH ${v} may have the "regreSSHion" hole`, why: `OpenSSH 8.5p1–9.7p1 has a bug that can let an attacker run code as root without logging in.${distro ? " This looks like a Linux distribution build, which was usually patched without changing the version number, so if it's updated it is already safe." : ""}` };
+    },
+  },
+  { when: /dropbear/i, range: ["0", "2016.74"], make: (v) => ({ severity: "high", cve: "CVE-2016-7406", title: `Old Dropbear SSH (${v})`, why: "Dropbear before 2016.74 has holes that allow running code. Devices this old are rarely updated, so treat it as exposed." }) },
+  { when: /samba/i, range: ["3.5.0", "4.6.4"], make: (v) => ({ severity: "critical", cve: "CVE-2017-7494", title: `Samba ${v} has the "SambaCry" hole`, why: "Samba 3.5.0–4.6.4 lets anyone who can write to a share run code on the device. It was used by worms." }) },
+  { when: /openssl/i, exact: /\b1\.0\.1[a-f]?\b/, make: (v) => ({ severity: "high", cve: "CVE-2014-0160", title: `OpenSSL ${v ?? "1.0.1"}: Heartbleed`, why: "OpenSSL 1.0.1 to 1.0.1f leaks memory to anyone who asks, which can include passwords and keys. Anything this old has not been updated in years." }) },
+  { when: /\b(goahead|GoAhead)\b/i, range: ["0", "3.6.5"], make: () => ({ severity: "critical", cve: "CVE-2017-17562", title: "GoAhead web server can be taken over", why: "The GoAhead web server (common on cheap IP cameras) before 3.6.5 lets an attacker on the network run code with no password." }) },
+  { when: /lighttpd/i, range: ["0", "1.4.51"], make: (v) => ({ severity: "medium", cve: "CVE-2019-11072", title: `lighttpd ${v} is old`, why: "This version of the lighttpd web server has published bugs. On a device it usually means firmware that stopped getting updates." }) },
+  { when: /miniupnpd/i, range: ["0", "2.1"], make: (v) => ({ severity: "medium", cve: "CVE-2019-12106", title: `MiniUPnPd ${v} is old`, why: "Old MiniUPnPd on a router can be crashed or abused from the network. A firmware update usually fixes it." }) },
+  { when: /proftpd/i, range: ["1.3.5", "1.3.5a"], make: () => ({ severity: "high", cve: "CVE-2015-3306", title: "ProFTPD 1.3.5 lets files be copied around", why: "ProFTPD 1.3.5 has a bug (mod_copy) that lets anyone read and write files on the server without logging in." }) },
+  { when: /\bboa\b/i, make: () => ({ severity: "medium", cve: "CVE-2017-9833", title: "Boa web server is abandoned", why: "The Boa web server (found on old cameras and routers) hasn't been maintained since 2005 and has known holes. If a device runs it, its firmware is very old." }) },
+];
+
+function knownBad(p: Port): Bad | undefined {
+  const text = `${p.product ?? ""} ${p.banner ?? ""} ${p.version ?? ""}`;
+  const v = (p.version ?? text).match(/\d+(?:\.\d+)+(?:p\d+|[a-z])?/)?.[0];
+  for (const r of CVE_RULES) {
+    if (!r.when.test(text)) continue;
+    if (r.exact) {
+      if (r.exact.test(text)) return r.make(v, text);
+      continue;
+    }
+    if (r.range && v && cmp(v, r.range[0]) >= 0 && cmp(v, r.range[1]) < 0) return r.make(v, text);
+    if (!r.range && !r.exact) return r.make(v, text);
   }
-  if (/dropbear/i.test(product) && v && cmp(v, "2016.74") < 0) return { severity: "high", title: `Old Dropbear SSH (${v})`, why: "Dropbear versions before 2016.74 have known holes that allow running code. Devices this old are rarely updated." };
-  if (/samba/i.test(product) && v && cmp(v, "3.5.0") >= 0 && cmp(v, "4.6.4") <= 0) return { severity: "critical", title: `Samba ${v} has the "SambaCry" hole`, why: "Samba 3.5.0 to 4.6.4 lets anyone who can write to a share run code on the device (CVE-2017-7494). It was used by worms." };
   return undefined;
 }
 
@@ -93,7 +121,7 @@ export function checkDevice(d: Device, gateway?: string): DeviceReport {
 
   for (const p of d.ports) {
     const bad = knownBad(p);
-    if (bad) add({ id: "outdated", severity: bad.severity, title: bad.title, why: bad.why, steps: [UPDATE, kind === "router" ? "If the maker no longer offers updates, replace the router. Internet providers often send a new one for free if you ask." : kind === "computer" ? "Install the system updates (on Linux: sudo apt update && sudo apt upgrade)." : "If no update exists, unplug it from the network until you can replace it."], port: p.port });
+    if (bad) add({ id: "outdated", severity: bad.severity, title: bad.title, why: bad.why, cve: bad.cve, steps: [UPDATE, kind === "router" ? "If the maker no longer offers updates, replace the router. Internet providers often send a new one for free if you ask." : kind === "computer" ? "Install the system updates (on Linux: sudo apt update && sudo apt upgrade)." : "If no update exists, unplug it from the network until you can replace it."], port: p.port });
   }
 
   const telnet = has(23) ?? has(2323);

@@ -10,6 +10,7 @@ import { displayName, issueKey, keyOf, roomFor, ROOMS, useDone, useHome, usePlac
 import { dismiss, EVENT_TEXT, resume, useLive } from "./live";
 import { eventDetail, LiveSheet, TONE } from "./livesheet";
 import { Palette, type Action } from "./palette";
+import { ReportPage } from "./report";
 import { DeviceTable } from "./table";
 import { MapView, type MapHandle } from "./MapView";
 import { Atom } from "./atom";
@@ -287,6 +288,8 @@ function App() {
         </div>
       )}
 
+      {page === "/report" && <ReportPage onClose={() => navigate("/network")} />}
+
       <Palette
         open={palette}
         onClose={() => setPalette(false)}
@@ -295,7 +298,8 @@ function App() {
         actions={
           [
             { id: "live", t: lv.status === "off" ? "Watch it live" : "Live activity", hint: "join leave alerts real time", run: () => navigate("/live") },
-            { id: "network", t: "Your network", hint: "grade internet speed router doors upnp report", run: () => navigate("/network") },
+            { id: "network", t: "Your network", hint: "grade internet speed router doors upnp", run: () => navigate("/network") },
+            { id: "report", t: "Security report (print or PDF)", hint: "report pdf share print cve", run: () => navigate("/report") },
             { id: "v-map", t: "Show the house plan", hint: "map rooms", run: () => setView("map") },
             { id: "v-atom", t: "Show the atom view", hint: "graph network orbit constellation", run: () => setView("atom") },
             { id: "v-table", t: "Show all devices as a table", hint: "list csv sort", run: () => setView("table") },
