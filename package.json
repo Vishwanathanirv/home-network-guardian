@@ -3,7 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "description": "Lamplight: see every device on your home network on a floor plan of your house, which ones are risky, and how to fix them in plain English.",
-  "author": "Vishwanathan R <mail@vishwanathan.dev> (https://vishwanathan.dev)",
   "license": "MIT",
   "type": "module",
   "workspaces": [
