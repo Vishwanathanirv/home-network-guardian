@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { useLive } from "./live";
-import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_LAST_WEEK, DEMO_XML_TONIGHT, parseNmap, setOui, withDetails, type Change, type DeviceReport, type Kind, type OuiTable, type Report, type Scan } from "@lamplight/core";
+import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_LAST_WEEK, DEMO_XML_TONIGHT, ipNum, KIND_NAME, parseNmap, setOui, withDetails, type Change, type DeviceReport, type Kind, type OuiTable, type Report, type Scan } from "@lamplight/core";
 
 /* ───────────── A tiny store backed by localStorage */
 
@@ -115,15 +115,49 @@ export function useHome(): { report: Report; changes: Change[]; isNew: (d: Devic
   const before = liveScan ? undefined : a.before ? scans.find((s) => s.id === a.before && s.id !== now.id) : undefined;
   const started = lv.state?.started;
   const presence = lv.state?.presence;
+  const savedNames = usePlaces();
   return useMemo(() => {
     const report = analyse(now.scan);
+    nameDevices(report.devices, savedNames);
     const changes = before ? compare(before.scan, now.scan) : [];
     const joined = new Set(changes.filter((c) => c.type === "joined").map((c) => keyOf(c.device)));
     // Live: new means it turned up after live mode started.
     const isNew = liveScan && presence && started ? (d: DeviceReport) => (presence[keyOf(d)]?.firstSeen ?? "") > started : (d: DeviceReport) => joined.has(keyOf(d));
     return { report, changes, isNew, now, before, live: !!liveScan };
     // `oui` is listed because loading the vendor table changes what analyse() finds.
-  }, [now, before, oui, liveScan, presence, started]);
+  }, [now, before, oui, liveScan, presence, started, savedNames]);
+}
+
+/** A real name if the device gives one; otherwise null (so it gets a numbered type label). */
+function realName(d: DeviceReport, saved?: { name?: string }): string | null {
+  const own = saved?.name?.trim();
+  if (own) return own;
+  const announced = d.details?.name?.trim();
+  if (announced && !/^[0-9a-f]{12,}$/i.test(announced)) return announced;
+  const host = d.hostname?.replace(/\.(home|lan|local|localdomain|internal)$/i, "").trim();
+  // A hostname that's just the model/chip or a MAC isn't really a name.
+  if (host && !/^(esp|espressif|tuya|localhost|android|amazon|unknown)[-_]?[0-9a-f]*$/i.test(host) && host.length > 1) return host;
+  return null;
+}
+
+/**
+ * Fills in each device's `label`: its own name if it has one, else a friendly type with a number,
+ * like "Smart home gadget 3", so a room full of identical bulbs stops reading as "Espressif".
+ */
+export function nameDevices(devices: DeviceReport[], saved: Record<string, { room?: string; name?: string }>) {
+  const counts: Record<string, number> = {};
+  const totals: Record<string, number> = {};
+  for (const d of devices) if (!realName(d, saved[keyOf(d)])) totals[KIND_NAME[d.kind]] = (totals[KIND_NAME[d.kind]] ?? 0) + 1;
+  for (const d of [...devices].sort((a, b) => ipNum(a.ip) - ipNum(b.ip))) {
+    const real = realName(d, saved[keyOf(d)]);
+    if (real) {
+      d.label = real;
+      continue;
+    }
+    const base = KIND_NAME[d.kind];
+    counts[base] = (counts[base] ?? 0) + 1;
+    d.label = totals[base] > 1 ? `${base} ${counts[base]}` : base;
+  }
 }
 
 /** Whether each device is on the network right now, in live mode. */
@@ -168,7 +202,27 @@ export function roomFor(d: DeviceReport, saved?: { room?: string }): string | nu
 }
 
 export function displayName(d: DeviceReport, saved?: { name?: string }) {
-  return saved?.name || d.hostname?.replace(/\.(home|lan|local|localdomain)$/i, "") || d.vendor || d.ip;
+  return saved?.name?.trim() || d.label || d.details?.name || d.hostname?.replace(/\.(home|lan|local|localdomain)$/i, "") || (d.kind !== "unknown" ? KIND_NAME[d.kind] : undefined) || d.vendor || d.ip;
+}
+
+/** A short, plain-English line of what a device is busy with, from the services it answers on. */
+const DOING: [number[], string][] = [
+  [[554, 8554, 8000], "streaming video"],
+  [[80, 443, 8080, 8443], "serving a web page"],
+  [[9100, 515, 631], "ready to print"],
+  [[445, 139, 2049, 21], "sharing files"],
+  [[1883, 8883, 6668, 5683], "smart-home control"],
+  [[22, 23, 2323, 3389, 5900], "remote control"],
+  [[5000, 5001, 8123], "running a web app"],
+  [[137, 138, 5353, 1900], "announcing itself"],
+  [[53], "answering name lookups"],
+  [[3306, 5432, 6379, 27017], "running a database"],
+];
+export function activity(d: DeviceReport): string {
+  const ports = new Set(d.ports.map((p) => p.port));
+  const found = DOING.filter(([ps]) => ps.some((p) => ports.has(p))).map(([, t]) => t);
+  if (!found.length) return d.ports.length ? "answering quietly" : "keeping to itself";
+  return found.slice(0, 2).join(", ");
 }
 
 /** The same device in every scan of the same home, oldest first. */

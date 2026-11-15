@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_TONIGHT, KIND_NAME, parseAny, parseNmap, serviceName, setOui, withDetails, type Change, type OuiTable, type Report } from "@lamplight/core";
 import oui from "../../core/data/oui.json";
@@ -114,7 +115,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     await live.ready.catch((e: NodeJS.ErrnoException) => {
       throw new Error(e.code === "EADDRINUSE" ? `Port ${port} is busy. Is live mode already running? Or pick another with --port.` : e.message);
     });
-    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nThe first scan takes about a minute. Press Ctrl+C to stop.\n\n`);
+    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nLive mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.\nThe first scan takes about a minute. Press Ctrl+C to stop.\n\n`);
     await new Promise<void>((resolve) => process.once("SIGINT", resolve));
     live.stop();
     process.stdout.write("\nStopped.\n");
@@ -143,7 +144,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r${t}   `) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     writeFileSync(out, JSON.stringify(scan, null, 2));
-    process.stderr.write(`\rFound ${scan.devices.length} devices. Saved to ${out}.\n\n`);
+    const full = resolve(out);
+    process.stderr.write(`\r${c("32", `Found ${scan.devices.length} devices.`)} Saved to:\n  ${full}\n(that's the folder your terminal is in. Open it at ${c("36", "home-network-guardian.vercel.app")} with "Scan your home".)\n\n`);
     process.stdout.write(values.json ? JSON.stringify(analyse(scan), null, 2) : printReport(analyse(scan)));
     return 0;
   }

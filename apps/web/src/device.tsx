@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { KIND_NAME, serviceName, type DeviceReport, type Issue } from "@lamplight/core";
-import { displayName, gradeOf, issueKey, keyOf, place, roomFor, ROOMS, scoreOf, toggleDone, useDone, useHistory, usePlaces } from "./lib";
+import { activity, displayName, gradeOf, issueKey, keyOf, place, roomFor, ROOMS, scoreOf, toggleDone, useDone, useHistory, usePlaces } from "./lib";
 import { toneOf } from "./plan";
 import { LiveView } from "./liveview";
 import { Check, Glyph, Section, Steps, SubHeader, WHEN } from "./sheets";
@@ -233,6 +233,7 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
                 {privateMac && <span className="ml-2 rounded-full bg-panel-2 px-2 py-px font-sans text-[11.5px] font-semibold text-muted">private</span>}
               </Row>
               {info.rtt !== undefined && <Row k="Response time">{info.rtt} ms{info.rtt > 30 ? " (probably on Wi-Fi far from the router, or asleep)" : info.rtt <= 3 ? " (probably wired)" : ""}</Row>}
+              <Row k="Doing">{activity(d)}</Row>
               <Row k="Seen">{history.length > 1 ? `In ${seen} of ${history.length} scans` : "In this scan"}</Row>
             </dl>
           </Section>

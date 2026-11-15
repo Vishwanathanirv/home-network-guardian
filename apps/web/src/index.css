@@ -186,3 +186,52 @@ body {
   stroke: var(--accent);
   stroke-width: 5;
 }
+
+/* The atom view: shells of devices orbit the router like electrons. */
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.shell {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: orbit linear infinite;
+}
+.atom-paused .shell {
+  animation-play-state: paused;
+}
+@keyframes blip {
+  0%,
+  100% {
+    opacity: 0.25;
+    r: 3;
+  }
+  50% {
+    opacity: 0.9;
+    r: 5;
+  }
+}
+.risky-node {
+  animation: blip 1.6s ease-in-out infinite;
+}
+@keyframes sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.radar {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: sweep 6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .risky-node,
+  .radar {
+    animation: none;
+  }
+}

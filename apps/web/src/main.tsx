@@ -12,6 +12,7 @@ import { eventDetail, LiveSheet, TONE } from "./livesheet";
 import { Palette, type Action } from "./palette";
 import { DeviceTable } from "./table";
 import { MapView, type MapHandle } from "./MapView";
+import { Atom } from "./atom";
 import { FloorPlan, layout, planHeight, W } from "./plan";
 import { NetworkSheet } from "./network";
 import { ScansSheet } from "./run";
@@ -53,14 +54,15 @@ function App() {
   const { report, isNew } = useHome();
   const lv = useLive();
   const presence = usePresence();
-  const [view, setViewState] = useState<"map" | "table">(() => {
+  const [view, setViewState] = useState<"map" | "atom" | "table">(() => {
     try {
-      return localStorage.getItem("lamplight-view") === "table" ? "table" : "map";
+      const v = localStorage.getItem("lamplight-view");
+      return v === "table" || v === "atom" ? v : "map";
     } catch {
       return "map";
     }
   });
-  const setView = (v: "map" | "table") => {
+  const setView = (v: "map" | "atom" | "table") => {
     setViewState(v);
     try {
       localStorage.setItem("lamplight-view", v);
@@ -127,7 +129,7 @@ function App() {
   // Fly to the device whenever one is opened, from the plan, a list or the address bar.
   useEffect(() => {
     const p = selected && pos.get(selected);
-    if (p) requestAnimationFrame(() => map.current?.focus(p.x + 12, p.y + 12));
+    if (p && view === "map") requestAnimationFrame(() => map.current?.focus(p.x + 12, p.y + 12));
     if (selected && !wide) setDetent((x) => (x === "peek" ? "half" : x));
   }, [selected]);
 
@@ -252,9 +254,13 @@ function App() {
 
   return (
     <div className="relative h-dvh overflow-hidden">
-      <MapView ref={map} w={W + 24} h={height} insets={insets}>
-        <FloorPlan devices={report.devices} selected={selected} onSelect={pick} isNew={isNew} worstOf={worstOf} open={(d) => leftOf(d).length} dim={(d) => !!hit && !hit.has(d.ip)} away={(d) => !!presence?.[keyOf(d)] && !presence[keyOf(d)].online} />
-      </MapView>
+      {view === "atom" ? (
+        <Atom mapRef={map} insets={insets} devices={report.devices} gateway={report.scan.gateway} selected={selected} onPick={pick} worstOf={worstOf} isNew={isNew} dim={(d) => !!hit && !hit.has(d.ip)} onNucleus={() => navigate("/network")} />
+      ) : (
+        <MapView ref={map} w={W + 24} h={height} insets={insets}>
+          <FloorPlan devices={report.devices} selected={selected} onSelect={pick} isNew={isNew} worstOf={worstOf} open={(d) => leftOf(d).length} dim={(d) => !!hit && !hit.has(d.ip)} away={(d) => !!presence?.[keyOf(d)] && !presence[keyOf(d)].online} />
+        </MapView>
+      )}
 
       {view === "table" && (
         <section data-ui aria-label="All devices" className={`glass rise absolute z-[15] rounded-2xl ${wide ? "bottom-3 left-[408px] right-[4.5rem] top-3" : "inset-x-3 top-[7.25rem]"}`} style={{ background: "var(--panel)", ...(wide ? {} : { bottom: sheetH + 8 }) }}>
@@ -290,7 +296,9 @@ function App() {
           [
             { id: "live", t: lv.status === "off" ? "Watch it live" : "Live activity", hint: "join leave alerts real time", run: () => navigate("/live") },
             { id: "network", t: "Your network", hint: "grade internet speed router doors upnp report", run: () => navigate("/network") },
-            { id: "table", t: view === "table" ? "Show the plan" : "Show all devices as a table", hint: "list csv sort", run: () => setView(view === "table" ? "map" : "table") },
+            { id: "v-map", t: "Show the house plan", hint: "map rooms", run: () => setView("map") },
+            { id: "v-atom", t: "Show the atom view", hint: "graph network orbit constellation", run: () => setView("atom") },
+            { id: "v-table", t: "Show all devices as a table", hint: "list csv sort", run: () => setView("table") },
             { id: "scan", t: "Scan your home", hint: "commands terminal cmd", run: () => navigate("/scans") },
             { id: "changes", t: "What changed", hint: "joined compare", run: () => navigate("/changes") },
             { id: "fit", t: "Show the whole house", hint: "zoom fit", run: () => map.current?.fit() },
@@ -331,9 +339,19 @@ function App() {
             {lv.status !== "off" && <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${lv.status === "live" ? "bg-ok" : "bg-warn"}`} />}
           </button>
         )}
-        <button className="glass mapbtn rounded-xl" onClick={() => setView(view === "table" ? "map" : "table")} aria-label={view === "table" ? "Show the plan" : "Show all devices as a table"} aria-pressed={view === "table"} title={view === "table" ? "Show the plan" : "Table"}>
-          <Icon d={view === "table" ? "M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3zM9 4v13M15 7v13" : "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14"} />
-        </button>
+        <div className="glass flex flex-col overflow-hidden rounded-xl" role="group" aria-label="View">
+          {(
+            [
+              ["map", "House plan", "M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3zM9 4v13M15 7v13"],
+              ["atom", "Atom view", "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 3a16 7 0 0 0 0 18M12 3a16 7 0 0 1 0 18M4 7.5a16 7 60 0 0 16 9M4 16.5a16 7 60 0 1 16-9"],
+              ["table", "Table", "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14"],
+            ] as const
+          ).map(([v, label, d]) => (
+            <button key={v} className={`mapbtn ${view === v ? "text-accent" : "text-muted"}`} onClick={() => setView(v)} aria-label={label} aria-pressed={view === v} title={label}>
+              <Icon d={d} />
+            </button>
+          ))}
+        </div>
         <button className="glass mapbtn rounded-xl" onClick={() => map.current?.fit()} aria-label="Show the whole house" title="Show the whole house (0)">
           <Icon d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
         </button>

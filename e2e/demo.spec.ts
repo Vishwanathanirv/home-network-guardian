@@ -6,21 +6,20 @@ const details = (page: Page) => page.getByRole("region", { name: "Details" });
 test("the example home fills the screen and lists what to fix tonight", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /17 devices are home\. 6 need you tonight\. 2 are new\./ })).toBeVisible();
-  await expect(onPlan(page, "android-tv-box")).toBeVisible();
+  await expect(onPlan(page, "Living Room TV")).toBeVisible();
   await expect(details(page).getByText("Android debugging is open to the network")).toBeVisible();
 
   // Ticking a problem off updates the headline and the device's badge on the plan.
   await details(page).getByRole("button", { name: "Done: Android debugging is open to the network" }).click();
   await expect(page.getByRole("heading", { name: /5 need you tonight/ })).toBeVisible();
-  await expect(onPlan(page, "android-tv-box")).toHaveAttribute("aria-label", /fine/);
+  await expect(onPlan(page, "Living Room TV")).toHaveAttribute("aria-label", /fine/);
 });
 
 test("tapping a device on the plan opens it, and it can be renamed and moved", async ({ page }) => {
   await page.goto("/");
-  await onPlan(page, "android-tv-box").click();
-  await expect(details(page).getByRole("heading", { name: "android-tv-box", exact: true })).toBeVisible();
-  // What the device said about itself over Bonjour.
-  await expect(details(page).getByText("Living Room TV")).toBeVisible();
+  await onPlan(page, "Living Room TV").click();
+  await expect(details(page).getByRole("heading", { name: "Living Room TV", exact: true })).toBeVisible();
+  // Its Bonjour service and model are shown.
   await expect(details(page).getByText("Google Cast", { exact: true })).toBeVisible();
   await details(page).getByRole("tab", { name: /Fix/ }).click();
   await expect(details(page).getByText("Developer options").first()).toBeVisible();
@@ -47,8 +46,8 @@ test("search and filters narrow the plan to matching devices", async ({ page }) 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Needs you tonight" }).click();
   await expect(details(page).getByRole("heading", { name: "4 devices" })).toBeVisible();
-  await details(page).getByRole("button", { name: /^router/ }).click();
-  await expect(details(page).getByRole("heading", { name: "router", exact: true })).toBeVisible();
+  await details(page).getByRole("button", { name: /^Living Room TV/ }).click();
+  await expect(details(page).getByRole("heading", { name: "Living Room TV", exact: true })).toBeVisible();
 });
 
 test("a pasted ARP table becomes the current scan", async ({ page }) => {
@@ -66,7 +65,7 @@ test("what changed lists who joined since last week", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /What changed/ }).click();
   await expect(page.getByText("Joined the network").first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "android-tv-box" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Living Room TV" })).toBeVisible();
   await expect(page.getByText("Started answering on File transfer (FTP)")).toBeVisible();
 });
 
@@ -108,7 +107,7 @@ test("live mode: the site reads the scanner on this computer and shows who comes
   await expect(page.getByRole("button", { name: "Live: open activity" })).toBeVisible();
   // The key is taken out of the address bar.
   expect(page.url()).not.toContain("key=");
-  await expect(page.getByRole("button", { name: /^iphone, .*away/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Ravi's iPhone, .*away/ })).toBeVisible();
   // A device joining pops up, and the activity feed has it.
   await expect(page.getByRole("status").getByText("Joined the network")).toBeVisible({ timeout: 8000 });
   await page.getByRole("button", { name: "Live: open activity" }).click();
@@ -119,14 +118,14 @@ test("live mode: the site reads the scanner on this computer and shows who comes
 test("the table view sorts every device, and Ctrl K jumps anywhere", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /devices are home/ })).toBeVisible();
-  await page.getByRole("button", { name: "Show all devices as a table" }).click();
+  await page.getByRole("button", { name: "Table", exact: true }).click();
   const table = page.getByRole("region", { name: "All devices" });
   await table.getByRole("button", { name: /^Address/ }).click();
   await expect(table.locator("tbody tr").first()).toContainText("192.168.1.1");
   await page.keyboard.press("Control+k");
   await page.keyboard.type("officejet");
   await page.keyboard.press("Enter");
-  await expect(details(page).getByRole("heading", { name: "hp-officejet", exact: true })).toBeVisible();
+  await expect(details(page).getByRole("heading", { name: /OfficeJet Pro 9010/ })).toBeVisible();
 });
 
 test("in live mode, a camera's snapshot shows right in the app", async ({ page }) => {
@@ -152,4 +151,15 @@ test("in live mode, a camera's snapshot shows right in the app", async ({ page }
   await expect(details(page).getByText("This camera is open")).toBeVisible();
   // And a device's page can be opened directly on its real address.
   await expect(details(page).getByRole("link", { name: "http://192.168.1.30:80", exact: true })).toHaveAttribute("href", "http://192.168.1.30:80/");
+});
+
+test("the atom view draws the network and opens a device, with friendly names", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /devices are home/ })).toBeVisible();
+  await page.getByRole("button", { name: "Atom view", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Your network as an atom" })).toBeVisible();
+  // Cheap IoT is named by what it is, not the chip maker.
+  await page.getByRole("button", { name: "Table", exact: true }).click();
+  const table = page.getByRole("region", { name: "All devices" });
+  await expect(table.getByText("Smart home gadget", { exact: false }).first()).toBeVisible();
 });

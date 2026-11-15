@@ -80,7 +80,7 @@ function knownBad(p: Port): { title: string; why: string; severity: Severity } |
   return undefined;
 }
 
-export type DeviceReport = Device & { kind: Kind; vendor?: string; confidence: "sure" | "likely" | "guess"; reasons: string[]; issues: Issue[]; worst: Severity | null };
+export type DeviceReport = Device & { kind: Kind; vendor?: string; confidence: "sure" | "likely" | "guess"; reasons: string[]; issues: Issue[]; worst: Severity | null; /** A friendly, numbered display name, filled in by the app. */ label?: string };
 
 export function checkDevice(d: Device, gateway?: string): DeviceReport {
   const c = classify(d, gateway);

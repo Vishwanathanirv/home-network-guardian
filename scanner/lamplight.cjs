@@ -35,6 +35,7 @@ __export(cli_exports, {
 });
 module.exports = __toCommonJS(cli_exports);
 var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
 var import_node_util2 = require("node:util");
 
 // ../core/src/types.ts
@@ -573,11 +574,11 @@ var import_node_dns = require("node:dns");
 var import_node_net = __toESM(require("node:net"), 1);
 function connectTime(host, port, timeout = 2e3) {
   const start = performance.now();
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const s = import_node_net.default.connect({ host, port });
     const end = (ok) => {
       s.destroy();
-      resolve(ok ? Math.round((performance.now() - start) * 10) / 10 : void 0);
+      resolve2(ok ? Math.round((performance.now() - start) * 10) / 10 : void 0);
     };
     s.setTimeout(timeout, () => end(false));
     s.on("connect", () => end(true));
@@ -745,7 +746,7 @@ function readMdns(records) {
   return info;
 }
 function mdns(iface, wait = 3e3) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const records = /* @__PURE__ */ new Map();
     const sock = import_node_dgram.default.createSocket({ type: "udp4", reuseAddr: true });
     const finish = () => {
@@ -753,7 +754,7 @@ function mdns(iface, wait = 3e3) {
         sock.close();
       } catch {
       }
-      resolve(new Map([...records].map(([ip, rs]) => [ip, readMdns(rs)])));
+      resolve2(new Map([...records].map(([ip, rs]) => [ip, readMdns(rs)])));
     };
     sock.on("message", (m, r) => {
       try {
@@ -796,7 +797,7 @@ function readNbstat(buf) {
   return name ? { name, group } : void 0;
 }
 function netbios(ips, wait = 1500) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const found = /* @__PURE__ */ new Map();
     const sock = import_node_dgram.default.createSocket("udp4");
     const finish = () => {
@@ -804,7 +805,7 @@ function netbios(ips, wait = 1500) {
         sock.close();
       } catch {
       }
-      resolve(found);
+      resolve2(found);
     };
     sock.on("message", (m, r) => {
       const n = readNbstat(m);
@@ -818,7 +819,7 @@ function netbios(ips, wait = 1500) {
   });
 }
 function get(url, timeout = 2500, limit = 65536) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     let body = "";
     const req = import_node_http.default.get(url, { timeout, headers: { "user-agent": "lamplight" } }, (res) => {
       res.setEncoding("utf8");
@@ -826,11 +827,11 @@ function get(url, timeout = 2500, limit = 65536) {
         body += c2;
         if (body.length > limit) req.destroy();
       });
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body }));
-      res.on("close", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body }));
+      res.on("end", () => resolve2({ status: res.statusCode ?? 0, headers: res.headers, body }));
+      res.on("close", () => resolve2({ status: res.statusCode ?? 0, headers: res.headers, body }));
     });
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(void 0));
+    req.on("error", () => resolve2(void 0));
   });
 }
 var tag = (xml, name) => xml.match(new RegExp(`<${name}>([^<]{1,120})</${name}>`, "i"))?.[1]?.replace(/&amp;/g, "&").trim() || void 0;
@@ -848,25 +849,25 @@ function readPage(status, headers, body) {
   return { status, title: title || void 0, server, login: login || void 0 };
 }
 function certificate(host, port, timeout = 2500) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const sock = import_node_tls.default.connect({ host, port, rejectUnauthorized: false, timeout }, () => {
       const c2 = sock.getPeerCertificate();
       sock.destroy();
-      if (!c2 || !c2.subject) return resolve(void 0);
+      if (!c2 || !c2.subject) return resolve2(void 0);
       const name = (x) => x.CN || x.O || void 0;
       const subject = name(c2.subject);
       const issuer = c2.issuer ? name(c2.issuer) : void 0;
-      resolve({ port, subject: subject ? String(subject) : void 0, issuer: issuer ? String(issuer) : void 0, expires: c2.valid_to ? new Date(c2.valid_to).toISOString() : void 0, selfSigned: JSON.stringify(c2.subject) === JSON.stringify(c2.issuer) || void 0 });
+      resolve2({ port, subject: subject ? String(subject) : void 0, issuer: issuer ? String(issuer) : void 0, expires: c2.valid_to ? new Date(c2.valid_to).toISOString() : void 0, selfSigned: JSON.stringify(c2.subject) === JSON.stringify(c2.issuer) || void 0 });
     });
     sock.on("timeout", () => {
       sock.destroy();
-      resolve(void 0);
+      resolve2(void 0);
     });
-    sock.on("error", () => resolve(void 0));
+    sock.on("error", () => resolve2(void 0));
   });
 }
 function post(url, body, headers, timeout = 2500) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const u = new URL(url);
     const req = import_node_http.default.request({ host: u.hostname, port: u.port || 80, path: u.pathname + u.search, method: "POST", timeout, headers: { "content-type": 'text/xml; charset="utf-8"', "content-length": Buffer.byteLength(body), ...headers } }, (res) => {
       let data = "";
@@ -875,10 +876,10 @@ function post(url, body, headers, timeout = 2500) {
         data += c2;
         if (data.length > 65536) req.destroy();
       });
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: data }));
+      res.on("end", () => resolve2({ status: res.statusCode ?? 0, body: data }));
     });
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(void 0));
+    req.on("error", () => resolve2(void 0));
     req.end(body);
   });
 }
@@ -954,7 +955,7 @@ function pickNetwork(list) {
 function probe(ip, port, timeout = 800, read = HTTP_PORTS.has(port) ? "http" : BANNER_PORTS.has(port) ? "banner" : "none") {
   const isHttp = read === "http";
   const start = performance.now();
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const sock = import_node_net2.default.connect({ host: ip, port });
     let data = "";
     let done = false;
@@ -970,7 +971,7 @@ function probe(ip, port, timeout = 800, read = HTTP_PORTS.has(port) ? "http" : B
         const headers = Object.fromEntries(head.split(/\r?\n/).slice(1).map((l) => [l.slice(0, l.indexOf(":")).trim().toLowerCase(), l.slice(l.indexOf(":") + 1).trim()]));
         if (status) p.web = readPage(status, headers, data.slice(head.length));
       }
-      resolve(p);
+      resolve2(p);
     };
     sock.setTimeout(timeout, () => finish({ state: data || sock.readyState === "open" ? "open" : "silent", banner: isHttp ? serverOf(data) : firstLine(data) }));
     sock.on("connect", () => {
@@ -1007,7 +1008,7 @@ async function pool(items, limit, fn) {
   );
 }
 function ssdp(wait = 2500, iface) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const found = /* @__PURE__ */ new Map();
     const locations = /* @__PURE__ */ new Map();
     const sock = import_node_dgram2.default.createSocket({ type: "udp4", reuseAddr: true });
@@ -1024,7 +1025,7 @@ function ssdp(wait = 2500, iface) {
     });
     sock.on("error", () => {
       sock.close();
-      resolve({ hints: found, locations });
+      resolve2({ hints: found, locations });
     });
     sock.bind(0, () => {
       try {
@@ -1035,7 +1036,7 @@ function ssdp(wait = 2500, iface) {
       setTimeout(() => sock.send(msg, 1900, "239.255.255.250"), 300);
       setTimeout(() => {
         sock.close();
-        resolve({ hints: found, locations });
+        resolve2({ hints: found, locations });
       }, wait);
     });
   });
@@ -1149,12 +1150,12 @@ async function internetCheck(gateway, locations, router) {
 
 // src/live.ts
 function fetchResource(target, timeout = 4e3, limit = 3e6) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     let u;
     try {
       u = new URL(target);
     } catch {
-      return resolve(void 0);
+      return resolve2(void 0);
     }
     const lib = u.protocol === "https:" ? import_node_https.default : import_node_http2.default;
     const chunks = [];
@@ -1178,13 +1179,13 @@ function fetchResource(target, timeout = 4e3, limit = 3e6) {
           out.text = text.slice(0, 2e4);
           out.title = text.match(/<title[^>]*>([^<]{1,140})<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
         }
-        resolve(out);
+        resolve2(out);
       };
       res.on("end", done);
       res.on("close", done);
     });
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(size ? void 0 : void 0));
+    req.on("error", () => resolve2(size ? void 0 : void 0));
     req.end();
   });
 }
@@ -1339,9 +1340,9 @@ function startLive(o) {
     res.writeHead(404).end();
   });
   const timers = [];
-  const ready = new Promise((resolve, reject) => {
+  const ready = new Promise((resolve2, reject) => {
     server.once("error", reject);
-    server.listen(o.port, "127.0.0.1", () => resolve());
+    server.listen(o.port, "127.0.0.1", () => resolve2());
   });
   void (async () => {
     await ready;
@@ -1478,10 +1479,11 @@ Open this link to see it live (keep it private, it has your key):
 
   ${c("36", `${site}/?live=${port}&key=${live.key}`)}
 
+Live mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.
 The first scan takes about a minute. Press Ctrl+C to stop.
 
 `);
-    await new Promise((resolve) => process.once("SIGINT", resolve));
+    await new Promise((resolve2) => process.once("SIGINT", resolve2));
     live.stop();
     process.stdout.write("\nStopped.\n");
     return 0;
@@ -1512,7 +1514,10 @@ The first scan takes about a minute. Press Ctrl+C to stop.
     const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r${Math.round(d / t * 100)}% `), onStep: (t) => process.stderr.write(`\r${t}   `) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     (0, import_node_fs.writeFileSync)(out, JSON.stringify(scan, null, 2));
-    process.stderr.write(`\rFound ${scan.devices.length} devices. Saved to ${out}.
+    const full = (0, import_node_path.resolve)(out);
+    process.stderr.write(`\r${c("32", `Found ${scan.devices.length} devices.`)} Saved to:
+  ${full}
+(that's the folder your terminal is in. Open it at ${c("36", "home-network-guardian.vercel.app")} with "Scan your home".)
 
 `);
     process.stdout.write(values.json ? JSON.stringify(analyse(scan), null, 2) : printReport(analyse(scan)));
