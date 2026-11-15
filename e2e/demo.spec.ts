@@ -18,8 +18,14 @@ test("the example home fills the screen and lists what to fix tonight", async ({
 test("tapping a device on the plan opens it, and it can be renamed and moved", async ({ page }) => {
   await page.goto("/");
   await onPlan(page, "android-tv-box").click();
-  await expect(details(page).getByRole("heading", { name: "android-tv-box" })).toBeVisible();
+  await expect(details(page).getByRole("heading", { name: "android-tv-box", exact: true })).toBeVisible();
+  // What the device said about itself over Bonjour.
+  await expect(details(page).getByText("Living Room TV")).toBeVisible();
+  await expect(details(page).getByText("Google Cast", { exact: true })).toBeVisible();
+  await details(page).getByRole("tab", { name: /Fix/ }).click();
   await expect(details(page).getByText("Developer options").first()).toBeVisible();
+  await details(page).getByRole("tab", { name: "History" }).click();
+  await expect(details(page).getByText("Not on the network.")).toBeVisible();
 
   await page.goto("/?device=192.168.1.31");
   await expect(page.getByText("Shenzhen Bilian Electronic")).toBeVisible();
@@ -42,7 +48,7 @@ test("search and filters narrow the plan to matching devices", async ({ page }) 
   await page.getByRole("button", { name: "Needs you tonight" }).click();
   await expect(details(page).getByRole("heading", { name: "4 devices" })).toBeVisible();
   await details(page).getByRole("button", { name: /^router/ }).click();
-  await expect(details(page).getByRole("heading", { name: "router" })).toBeVisible();
+  await expect(details(page).getByRole("heading", { name: "router", exact: true })).toBeVisible();
 });
 
 test("a pasted ARP table becomes the current scan", async ({ page }) => {
@@ -62,4 +68,19 @@ test("what changed lists who joined since last week", async ({ page }) => {
   await expect(page.getByText("Joined the network").first()).toBeVisible();
   await expect(page.getByRole("link", { name: "android-tv-box" })).toBeVisible();
   await expect(page.getByText("Started answering on File transfer (FTP)")).toBeVisible();
+});
+
+test("the network page grades the whole home, and the scan page has the commands", async ({ page }) => {
+  await page.goto("/network");
+  await expect(details(page).getByText(/Safety grade [A-F]/)).toBeVisible();
+  await expect(details(page).getByText("Archer C6 v2 by TP-Link", { exact: false })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await details(page).getByRole("button", { name: "Download the report" }).click();
+  expect((await download).suggestedFilename()).toMatch(/^lamplight-report-.*\.md$/);
+
+  await page.goto("/scans");
+  await page.getByRole("tab", { name: "Windows" }).click();
+  await page.getByLabel("Your computer's address").fill("10.101.250.38");
+  await expect(details(page).getByText("node lamplight.cjs scan --network 10.101.250.0/24").first()).toBeVisible();
+  await expect(details(page).getByText(/curl\.exe -L -o lamplight\.cjs/)).toBeVisible();
 });

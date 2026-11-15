@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { analyse, compare, DEMO_XML_LAST_WEEK, DEMO_XML_TONIGHT, parseNmap, setOui, type Change, type DeviceReport, type Kind, type OuiTable, type Report, type Scan } from "@lamplight/core";
+import { useMemo, useSyncExternalStore } from "react";
+import { analyse, compare, DEMO_DETAILS, DEMO_XML_LAST_WEEK, DEMO_XML_TONIGHT, parseNmap, setOui, withDetails, type Change, type DeviceReport, type Kind, type OuiTable, type Report, type Scan } from "@lamplight/core";
 
 /* ───────────── A tiny store backed by localStorage */
 
@@ -35,15 +35,14 @@ function store<T>(key: string, fallback: T) {
 export type SavedScan = { id: string; name: string; scan: Scan; demo?: boolean };
 
 const DEMO: SavedScan[] = [
-  { id: "demo-tonight", name: "Example home, tonight", scan: parseNmap(DEMO_XML_TONIGHT), demo: true },
-  { id: "demo-last-week", name: "Example home, last week", scan: parseNmap(DEMO_XML_LAST_WEEK), demo: true },
+  { id: "demo-tonight", name: "Example home, tonight", scan: { ...withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS), source: "lamplight", network: "192.168.1.0/24", gateway: "192.168.1.1" }, demo: true },
+  { id: "demo-last-week", name: "Example home, last week", scan: { ...withDetails(parseNmap(DEMO_XML_LAST_WEEK), DEMO_DETAILS), source: "lamplight", network: "192.168.1.0/24", gateway: "192.168.1.1" }, demo: true },
 ];
 
 const own = store<SavedScan[]>("lamplight-scans-v1", []);
 const active = store<{ now: string; before: string | null }>("lamplight-active-v1", { now: "demo-tonight", before: "demo-last-week" });
 /** Where you put each device and what you called it, keyed by MAC address (or IP). */
 const places = store<Record<string, { room?: string; name?: string }>>("lamplight-places-v1", {});
-const theme = store<"auto" | "day" | "night">("lamplight-theme-store", "auto");
 /** Problems you've ticked off, keyed by device + problem. */
 const done = store<Record<string, number>>("lamplight-done-v1", {});
 
@@ -62,8 +61,10 @@ export const setActive = (v: { now: string; before: string | null }) => active.s
 export function addScan(name: string, scan: Scan): SavedScan {
   const s = { id: `own-${Date.now().toString(36)}`, name, scan };
   own.set([s, ...own.get()]);
-  // The newest scan becomes "now"; the one it replaced becomes "before".
-  active.set({ now: s.id, before: active.get().now });
+  // The newest scan becomes "now"; the one it replaced becomes "before", unless that was the
+  // example home, which has nothing to do with yours.
+  const prev = active.get().now;
+  active.set({ now: s.id, before: prev.startsWith("demo-") ? null : prev });
   return s;
 }
 export function removeScan(id: string) {
@@ -77,29 +78,6 @@ export const usePlaces = () => places.use();
 export function place(key: string, patch: { room?: string; name?: string }) {
   const cur = places.get();
   places.set({ ...cur, [key]: { ...cur[key], ...patch } });
-}
-
-/** Day or night as it looks right now, whatever the setting. */
-export function useLights(): ["day" | "night", () => void] {
-  const [t, set] = useTheme();
-  const dark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-  const now = t === "auto" ? (dark ? "night" : "day") : t;
-  return [now, () => set(now === "day" ? "night" : "day")];
-}
-
-export function useTheme() {
-  const t = theme.use();
-  useEffect(() => {
-    const el = document.documentElement;
-    if (t === "auto") delete el.dataset.theme;
-    else el.dataset.theme = t === "day" ? "light" : "dark";
-    try {
-      localStorage.setItem("lamplight-theme", t);
-    } catch {
-      /* ignore */
-    }
-  }, [t]);
-  return [t, theme.set] as const;
 }
 
 /* ───────────── Vendor table, loaded once in the background */
@@ -177,3 +155,18 @@ export function roomFor(d: DeviceReport, saved?: { room?: string }): string | nu
 export function displayName(d: DeviceReport, saved?: { name?: string }) {
   return saved?.name || d.hostname?.replace(/\.(home|lan|local|localdomain)$/i, "") || d.vendor || d.ip;
 }
+
+/** The same device in every scan of the same home, oldest first. */
+export function useHistory(d: { mac?: string; ip: string }) {
+  const scans = useScans();
+  const { now } = useHome();
+  return scans
+    .filter((s) => !!s.demo === !!now.demo)
+    .sort((a, b) => a.scan.at.localeCompare(b.scan.at))
+    .map((s) => ({ scan: s, device: s.scan.devices.find((x) => keyOf(x) === keyOf(d)) }));
+}
+
+/** 100 is nothing to fix; each open problem takes points off by how serious it is. */
+export const SCORE_COST = { critical: 40, high: 25, medium: 12, low: 4, info: 0 } as const;
+export const scoreOf = (issues: { severity: keyof typeof SCORE_COST }[]) => Math.max(0, 100 - issues.reduce((n, i) => n + SCORE_COST[i.severity], 0));
+export const gradeOf = (score: number) => (score >= 90 ? "A" : score >= 75 ? "B" : score >= 55 ? "C" : score >= 35 ? "D" : "F");

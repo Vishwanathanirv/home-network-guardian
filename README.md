@@ -18,13 +18,18 @@ Many homes now have more than a dozen connected devices, and few people could na
 - **Works out what each one is.** It looks up the maker in the IEEE MAC address registry (about 40,000 entries), reads the device's own name and the services it answers on (554 is a video stream, 9100 a printer, 62078 an iPhone), and shows the clues it used and how sure it is. Phones and laptops that hide behind a random "private" MAC address are recognised as such.
 - **Puts it in a room.** Devices go where their name says (`echo-kitchen`, `driveway-cam`) or where that kind of device usually lives. Drag them to the right room; Lamplight remembers.
 - **Says what to fix, and when.** "Tonight" for critical problems (Telnet on a camera, Android debugging on a TV box, software with a notorious hole), "this week" for things like UPnP on the router or an open camera stream, and network-wide advice such as moving gadgets to the guest network. Every item has steps someone without a networking background can follow.
+- **Finds out more than who's there.** The scanner asks each device about itself the way phones and computers do every day: Bonjour gives the name its owner gave it ("Living Room TV") and its model, UPnP gives the router's make and model, NetBIOS gives Windows computer names, and it reads each web page's title, whether it asks for a password, and each HTTPS certificate (who issued it, when it expires). It also times how fast each device answers.
+- **Opens every device like a profile.** Tabs for an overview (identity, what it announces, why Lamplight thinks it's what it is, and how sure), what to fix, the services it answers on, its history across scans, and the raw data. Each device and the whole network get a safety grade from A to F.
+- **Shows the whole network.** The grade, the router, the weakest devices, what's on the network, who made it all and which services answer, plus a report you can download and keep.
 - **Keeps a to-do list.** Tick a problem off when you've fixed it: the device's badge on the plan updates and a progress bar shows how far you've got.
 - **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out.
 - **Notices change.** Compare two scans to see who joined, who left, and what started answering. The scanner exits with code 1 when a new device joins, so a nightly cron job can email you.
 
 ![A device opened](docs/screenshots/device.png)
 
-![Searching for cameras](docs/screenshots/search.png)
+![The whole network](docs/screenshots/network.png)
+
+![The commands, ready to copy](docs/screenshots/commands.png)
 
 ![On a phone](docs/screenshots/mobile.png)
 
@@ -52,17 +57,22 @@ Then choose the file, or paste the text. It is read in your browser and stored o
 `scanner/lamplight.cjs` is a single file with no dependencies, built from `packages/scanner`.
 
 ```bash
-node scanner/lamplight.cjs scan [--network 192.168.1.0/24] [--out scan.json]
-node scanner/lamplight.cjs report scan.json        # what to fix, in the terminal
-node scanner/lamplight.cjs compare last.json scan.json
+node lamplight.cjs networks                        # which networks this computer is on
+node lamplight.cjs scan [--network 192.168.1.0/24] [--out scan.json]
+node lamplight.cjs report scan.json                # what to fix, in the terminal
+node lamplight.cjs compare last.json scan.json     # who joined, what opened
+node lamplight.cjs demo                            # the example home, to try it without scanning
 ```
+
+Download it with `curl -L -o lamplight.cjs https://raw.githubusercontent.com/Vishwanathanirv/home-network-guardian/main/scanner/lamplight.cjs` (on Windows, `curl.exe`). The site's **Scan your home** panel lists every command for Windows, Mac and Linux, filled in with your network.
 
 How it scans:
 
-1. It tries a TCP connection to 39 ports chosen for homes (risky services, plus ones that identify a device) on every address, 256 at a time. A device that answers **or refuses** is there.
-2. It reads short banners (SSH, Telnet, FTP) and HTTP `Server` headers to learn the software.
-3. It sends a UPnP discovery message; a router that answers as an Internet Gateway Device has UPnP switched on.
-4. It reads the ARP table for hardware addresses, does reverse DNS for names, and finds the router from the default route.
+1. It picks the network your router is on, skipping virtual adapters from VirtualBox, VMware, Hyper-V, WSL and Docker.
+2. It tries a TCP connection to 39 ports chosen for homes (risky services, plus ones that identify a device) on every address, 256 at a time. A device that answers **or refuses** is there, and the time it takes is its response time.
+3. It reads short banners (SSH, Telnet, FTP), and for web ports the page's title, its `Server` header and whether it has a login form. For HTTPS ports it reads the certificate.
+4. It asks who's there the polite way: a Bonjour (mDNS) question for 25 kinds of service, a UPnP search (then reads each device's own description), and a NetBIOS name query.
+5. It reads the ARP table for hardware addresses, does reverse DNS for names, and finds the router from the default route.
 
 It **refuses public addresses** and ranges larger than /22, and never tries to log in to anything. Only scan networks you own or are allowed to test.
 

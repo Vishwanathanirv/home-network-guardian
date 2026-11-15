@@ -144,7 +144,16 @@ export function checkDevice(d: Device, gateway?: string): DeviceReport {
     add({ id: "http-admin", severity: "low", port: has(80) ? 80 : 8080, title: "Settings page isn't encrypted", why: `${what[0].toUpperCase()}${what.slice(1)} has a web page for its settings with no encryption, so its password crosses the network in plain text.`, steps: [`Change ${what}'s admin password from the default.`, "Turn on HTTPS in its settings if it offers it."] });
   }
 
-  if ((kind === "unknown" || c.confidence === "guess") && !d.hostname)
+  // What the device's own web pages and certificates say.
+  const now = Date.now();
+  for (const t of d.details?.tls ?? [])
+    if (t.expires && Date.parse(t.expires) < now)
+      add({ id: "cert-expired", severity: "low", port: t.port, title: "Its security certificate has expired", why: `The HTTPS certificate on port ${t.port} ran out on ${new Date(t.expires).toDateString()}. Browsers will warn every time, which teaches everyone to click through warnings, and it often means the device stopped getting updates.`, steps: [UPDATE, "Many devices renew the certificate after an update or a restart."] });
+  const login = d.details?.web?.find((w) => w.login && ![443, 5001, 8443].includes(w.port));
+  if (login && !issues.some((i) => i.id === "router-http" || i.id === "http-admin"))
+    add({ id: "login-http", severity: "low", port: login.port, title: "A login page without encryption", why: `${what[0].toUpperCase()}${what.slice(1)} has a login page${login.title ? ` ("${login.title}")` : ""} on plain HTTP, so the password crosses the network readable by anything on the Wi-Fi.`, steps: ["Change its password from the default.", "Turn on HTTPS in its settings if it offers it, and use that address instead."] });
+
+  if ((kind === "unknown" || c.confidence === "guess") && !d.hostname && !d.details?.name)
     add({ id: "unknown", severity: "low", title: "Do you know what this is?", why: d.ports.length ? "Nothing says what this device is. It's worth checking it's yours." : "Nothing says what this device is, and it has no open services to identify it by. Most often it's a phone or laptop with a private address, but check.", steps: ["Look in your router's app or settings for its list of connected devices; it often shows names.", "Unplug or turn off devices one at a time and scan again to see which one disappears.", "If it isn't yours, change your Wi-Fi password and reconnect your own devices."] });
 
   issues.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);

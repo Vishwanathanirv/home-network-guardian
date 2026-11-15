@@ -4,7 +4,8 @@ import { promises as dns } from "node:dns";
 import net from "node:net";
 import os from "node:os";
 import { promisify } from "node:util";
-import { isPrivate, ipNum, parseArp, type Device, type Port, type Scan } from "@lamplight/core";
+import { isPrivate, ipNum, parseArp, type Details, type Device, type Port, type Scan } from "@lamplight/core";
+import { certificate, mdns, netbios, readPage, upnpDescription } from "./discover";
 
 const run = promisify(execFile);
 
@@ -27,47 +28,82 @@ export function hostsIn(cidr: string): string[] {
   return Array.from({ length: count - 2 }, (_, i) => ipStr(base + i + 1));
 }
 
-/** The network this computer is on, as a /24 around its own address. */
-export function localNetwork(): { cidr: string; self: string } | undefined {
-  for (const list of Object.values(os.networkInterfaces())) {
+/** Virtual adapters from VirtualBox, VMware, Hyper-V, WSL, Docker and VPNs: never the home network. */
+const VIRTUAL = /virtualbox|vbox|vmware|vmnet|vethernet|hyper-v|wsl|docker|br-|veth|virbr|tailscale|zerotier|utun|tun\d|tap|wireguard|wg\d|loopback|bluetooth|npcap/i;
+
+export type Iface = { name: string; address: string; cidr: string; virtual: boolean; gateway: boolean };
+
+/** Every network this computer is on, marking virtual ones and the one with the router. */
+export function interfaces(gateway?: string): Iface[] {
+  const out: Iface[] = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
     for (const a of list ?? []) {
-      if (a.family === "IPv4" && !a.internal && isPrivate(a.address) && !a.address.startsWith("169.254.")) {
-        return { cidr: `${a.address.split(".").slice(0, 3).join(".")}.0/24`, self: a.address };
-      }
+      if (a.family !== "IPv4" || a.internal || !isPrivate(a.address) || a.address.startsWith("169.254.")) continue;
+      const cidr = `${a.address.split(".").slice(0, 3).join(".")}.0/24`;
+      // VirtualBox's host-only network is 192.168.56.x even when the adapter has a plain name.
+      const virtual = VIRTUAL.test(name) || a.address.startsWith("192.168.56.");
+      out.push({ name, address: a.address, cidr, virtual, gateway: !!gateway && gateway.split(".").slice(0, 3).join(".") === a.address.split(".").slice(0, 3).join(".") });
     }
   }
-  return undefined;
+  return out;
 }
 
-type Probe = { state: "open" | "refused" | "silent"; banner?: string };
+/** The home network: the one the router is on, else the first real (not virtual) adapter. */
+export function pickNetwork(list: Iface[]): Iface | undefined {
+  return list.find((i) => i.gateway) ?? list.find((i) => !i.virtual) ?? list[0];
+}
+
+/** The network this computer is on, as a /24 around its own address. */
+export function localNetwork(): { cidr: string; self: string } | undefined {
+  const i = pickNetwork(interfaces());
+  return i && { cidr: i.cidr, self: i.address };
+}
+
+type Probe = { state: "open" | "refused" | "silent"; banner?: string; ms?: number; web?: { status?: number; title?: string; server?: string; login?: boolean } };
 
 /** Tries a TCP connection. A refusal still proves the host is there. */
 export function probe(ip: string, port: number, timeout = 800, read: "banner" | "http" | "none" = HTTP_PORTS.has(port) ? "http" : BANNER_PORTS.has(port) ? "banner" : "none"): Promise<Probe> {
   const isHttp = read === "http";
+  const start = performance.now();
   return new Promise((resolve) => {
     const sock = net.connect({ host: ip, port });
     let data = "";
     let done = false;
+    let ms: number | undefined;
     const finish = (p: Probe) => {
       if (done) return;
       done = true;
       sock.destroy();
+      if (ms !== undefined) p.ms = ms;
+      if (isHttp && p.state === "open" && data) {
+        const head = data.split(/\r?\n\r?\n/)[0];
+        const status = Number(head.match(/^HTTP\/\d\.\d\s+(\d{3})/)?.[1]) || undefined;
+        const headers = Object.fromEntries(head.split(/\r?\n/).slice(1).map((l) => [l.slice(0, l.indexOf(":")).trim().toLowerCase(), l.slice(l.indexOf(":") + 1).trim()]));
+        if (status) p.web = readPage(status, headers, data.slice(head.length));
+      }
       resolve(p);
     };
-    sock.setTimeout(timeout, () => finish({ state: data || sock.readyState === "open" ? "open" : "silent", banner: firstLine(data) }));
+    sock.setTimeout(timeout, () => finish({ state: data || sock.readyState === "open" ? "open" : "silent", banner: isHttp ? serverOf(data) : firstLine(data) }));
     sock.on("connect", () => {
-      if (isHttp) sock.write(`HEAD / HTTP/1.0\r\nHost: ${ip}\r\nUser-Agent: lamplight\r\n\r\n`);
+      ms = Math.round(performance.now() - start);
+      if (isHttp) sock.write(`GET / HTTP/1.0\r\nHost: ${ip}\r\nUser-Agent: lamplight\r\nAccept: text/html\r\nConnection: close\r\n\r\n`);
       else if (read === "none") finish({ state: "open" });
     });
     sock.on("data", (d) => {
       data += d.toString("latin1");
-      if (isHttp ? /\r?\n\r?\n/.test(data) : data.includes("\n")) finish({ state: "open", banner: isHttp ? data.match(/^server:\s*(.+)$/im)?.[1]?.trim() : firstLine(data) });
-      if (data.length > 4096) finish({ state: "open", banner: firstLine(data) });
+      if (!isHttp && data.includes("\n")) finish({ state: "open", banner: firstLine(data) });
+      // Enough of the page to find its title.
+      if (data.length > 16384 || (isHttp && /<\/title>/i.test(data))) finish({ state: "open", banner: isHttp ? serverOf(data) : firstLine(data) });
     });
-    sock.on("error", (e: NodeJS.ErrnoException) => finish({ state: e.code === "ECONNREFUSED" || e.code === "ECONNRESET" ? (e.code === "ECONNRESET" ? "open" : "refused") : "silent" }));
-    sock.on("end", () => finish({ state: "open", banner: firstLine(data) }));
+    sock.on("error", (e: NodeJS.ErrnoException) => {
+      if (e.code === "ECONNREFUSED") ms = Math.round(performance.now() - start);
+      finish({ state: e.code === "ECONNREFUSED" || e.code === "ECONNRESET" ? (e.code === "ECONNRESET" ? "open" : "refused") : "silent" });
+    });
+    sock.on("end", () => finish({ state: "open", banner: isHttp ? serverOf(data) : firstLine(data) }));
   });
 }
+
+const serverOf = (s: string) => s.match(/^server:\s*(.+)$/im)?.[1]?.trim();
 
 const firstLine = (s: string) =>
   s
@@ -88,29 +124,37 @@ async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>) {
 }
 
 /** Asks UPnP devices to announce themselves; routers with UPnP on answer as InternetGatewayDevice. */
-export function ssdp(wait = 2500): Promise<Map<string, string[]>> {
+export function ssdp(wait = 2500, iface?: string): Promise<{ hints: Map<string, string[]>; locations: Map<string, string> }> {
   return new Promise((resolve) => {
     const found = new Map<string, string[]>();
+    const locations = new Map<string, string>();
     const sock = dgram.createSocket({ type: "udp4", reuseAddr: true });
     const msg = Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n');
     sock.on("message", (m, r) => {
       const t = m.toString("latin1");
       const server = t.match(/^server:\s*(.+)$/im)?.[1]?.trim();
       const st = t.match(/^st:\s*(.+)$/im)?.[1]?.trim();
+      const loc = t.match(/^location:\s*(http:\/\/\S+)/im)?.[1];
+      if (loc && !locations.has(r.address) && new URL(loc).hostname === r.address) locations.set(r.address, loc);
       const list = found.get(r.address) ?? [];
       for (const v of [server && `SSDP server: ${server}`, st && `SSDP: ${st}`]) if (v && !list.includes(v)) list.push(v);
       found.set(r.address, list);
     });
     sock.on("error", () => {
       sock.close();
-      resolve(found);
+      resolve({ hints: found, locations });
     });
     sock.bind(0, () => {
+      try {
+        if (iface) sock.setMulticastInterface(iface);
+      } catch {
+        /* default interface */
+      }
       sock.send(msg, 1900, "239.255.255.250");
       setTimeout(() => sock.send(msg, 1900, "239.255.255.250"), 300);
       setTimeout(() => {
         sock.close();
-        resolve(found);
+        resolve({ hints: found, locations });
       }, wait);
     });
   });
@@ -128,13 +172,14 @@ async function arpTable(): Promise<Device[]> {
   return [];
 }
 
-async function defaultGateway(): Promise<string | undefined> {
+export async function defaultGateway(): Promise<string | undefined> {
   const tries: [string, string[], RegExp][] = [
     ["ip", ["route", "show", "default"], /default via (\d+\.\d+\.\d+\.\d+)/],
     ["route", ["-n", "get", "default"], /gateway:\s*(\d+\.\d+\.\d+\.\d+)/],
     ["netstat", ["-rn"], /^(?:default|0\.0\.0\.0)\s+(\d+\.\d+\.\d+\.\d+)/m],
     ["route", ["print", "0.0.0.0"], /0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)/],
   ];
+  if (process.platform === "win32") tries.unshift(tries.pop()!);
   for (const [cmd, args, re] of tries) {
     try {
       const { stdout } = await run(cmd, args, { timeout: 5000 });
@@ -156,34 +201,61 @@ async function reverse(ip: string): Promise<string | undefined> {
   }
 }
 
-export type ScanOptions = { cidr: string; ports?: number[]; timeout?: number; concurrency?: number; onProgress?: (done: number, total: number) => void };
+export type ScanOptions = { cidr: string; self?: string; ports?: number[]; timeout?: number; concurrency?: number; onProgress?: (done: number, total: number) => void; onStep?: (text: string) => void };
+
+const TLS_PORTS = new Set([443, 1443, 5001, 8443]);
 
 export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   const hosts = hostsIn(o.cidr);
   const ports = o.ports ?? DEFAULT_PORTS;
   const alive = new Map<string, Port[]>();
+  const rtt = new Map<string, number>();
+  const web = new Map<string, NonNullable<Details["web"]>>();
   const jobs = hosts.flatMap((ip) => ports.map((port) => ({ ip, port })));
   let done = 0;
-  const upnp = ssdp();
+  const upnp = ssdp(2500, o.self);
+  const bonjour = mdns(o.self);
   await pool(jobs, o.concurrency ?? 256, async ({ ip, port }) => {
     const r = await probe(ip, port, o.timeout);
     if (r.state !== "silent") {
       const list = alive.get(ip) ?? [];
       if (r.state === "open") list.push({ port, proto: "tcp", banner: r.banner });
       alive.set(ip, list);
+      if (r.ms !== undefined) rtt.set(ip, Math.min(rtt.get(ip) ?? Infinity, r.ms));
+      if (r.web) web.set(ip, [...(web.get(ip) ?? []), { port, ...r.web }]);
     }
     if (++done % 500 === 0) o.onProgress?.(done, jobs.length);
   });
   const inRange = new Set(hosts);
-  const [arp, gateway, announced] = await Promise.all([arpTable(), defaultGateway(), upnp]);
+  o.onStep?.("Asking devices for their names…");
+  const [arp, gateway, announced, bonj] = await Promise.all([arpTable(), defaultGateway(), upnp, bonjour]);
   const macs = new Map(arp.filter((a) => inRange.has(a.ip)).map((a) => [a.ip, a]));
-  const ips = [...new Set([...alive.keys(), ...macs.keys(), ...[...announced.keys()].filter((ip) => inRange.has(ip))])];
+  const ips = [...new Set([...alive.keys(), ...macs.keys(), ...[...announced.hints.keys(), ...bonj.keys()].filter((ip) => inRange.has(ip))])];
+  const [names, descs, certs] = await Promise.all([
+    netbios(ips),
+    Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, url]) => [ip, await upnpDescription(url)] as const)),
+    Promise.all(ips.flatMap((ip) => (alive.get(ip) ?? []).filter((p) => TLS_PORTS.has(p.port)).map(async (p) => [ip, await certificate(ip, p.port)] as const))),
+  ]);
   const devices: Device[] = await Promise.all(
     ips.map(async (ip) => {
-      const hints = announced.get(ip);
+      const hints = announced.hints.get(ip);
       const ports = (alive.get(ip) ?? []).sort((a, b) => a.port - b.port);
       if (hints?.some((h) => /InternetGatewayDevice|WANIPConnection/i.test(h))) ports.push({ port: 1900, proto: "udp", service: "upnp", banner: "Answers UPnP internet-gateway requests" });
-      return { ip, mac: macs.get(ip)?.mac, hostname: macs.get(ip)?.hostname ?? (await reverse(ip)), ports, hints };
+      const b = bonj.get(ip);
+      const u = descs.find(([x]) => x === ip)?.[1];
+      const details: Details = {
+        name: b?.name ?? u?.name ?? names.get(ip)?.name,
+        model: b?.model ?? u?.model,
+        maker: u?.maker,
+        services: b?.services.length ? b.services.filter((s) => s !== "_services._dns-sd._udp") : undefined,
+        netbios: names.get(ip),
+        web: web.get(ip),
+        tls: certs.filter(([x, c]) => x === ip && c).map(([, c]) => c!),
+        rtt: rtt.get(ip),
+      };
+      for (const k of Object.keys(details) as (keyof Details)[]) if (details[k] === undefined || (Array.isArray(details[k]) && !(details[k] as unknown[]).length)) delete details[k];
+      const hostname = macs.get(ip)?.hostname ?? (await reverse(ip)) ?? (b?.host ? `${b.host}.local` : undefined);
+      return { ip, mac: macs.get(ip)?.mac, hostname, ports, hints, ...(Object.keys(details).length ? { details } : {}) };
     }),
   );
   devices.sort((a, b) => ipNum(a.ip) - ipNum(b.ip));

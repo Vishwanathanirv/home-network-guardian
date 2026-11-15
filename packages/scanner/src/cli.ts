@@ -1,22 +1,30 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { analyse, compare, KIND_NAME, parseAny, serviceName, setOui, type Change, type OuiTable, type Report } from "@lamplight/core";
+import { analyse, compare, DEMO_DETAILS, DEMO_XML_TONIGHT, KIND_NAME, parseAny, parseNmap, serviceName, setOui, withDetails, type Change, type OuiTable, type Report } from "@lamplight/core";
 import oui from "../../core/data/oui.json";
-import { localNetwork, scanNetwork } from "./net";
+import { defaultGateway, interfaces, pickNetwork, scanNetwork } from "./net";
 
 setOui(oui as OuiTable);
 
 const HELP = `Lamplight: find every device on your home network and what's risky about it.
 
 Usage:
+  lamplight networks
+      List the networks this computer is on, and which one a scan would use.
   lamplight scan [--network 192.168.1.0/24] [--out scan.json]
       Scan your own network (detected automatically) and save the result.
       Open the file at the Lamplight site to see it on a floor plan.
+  lamplight demo [--out demo.json]
+      Save the example home's scan, to try the site and the commands
+      without scanning anything.
   lamplight report <scan>
       Print what to fix. Reads Lamplight JSON, nmap XML (-oX) or an ARP table.
   lamplight compare <older scan> <newer scan>
       Print devices that joined or left and services that opened.
       Exits with code 1 if a new device joined, so it can drive an alert.
+
+Try it without scanning:
+  lamplight demo && lamplight report lamplight-demo.json
 
 Options:
   --network <cidr>   Network to scan (default: this computer's /24)
@@ -40,7 +48,7 @@ function load(file: string) {
 function printReport(r: Report) {
   const out: string[] = [`${r.devices.length} devices on ${r.scan.network ?? "the network"}, scanned ${new Date(r.scan.at).toLocaleString()}`, ""];
   for (const d of r.devices) {
-    const label = d.hostname ?? d.vendor ?? "unnamed";
+    const label = [d.details?.name ?? d.hostname ?? d.vendor ?? "unnamed", d.details?.model && `(${d.details.model})`].filter(Boolean).join(" ");
     out.push(`${c("1", d.ip.padEnd(16))}${KIND_NAME[d.kind].padEnd(22)}${label}${d.worst && d.worst !== "info" ? `  ${c(SEV_COLOR[d.worst], d.worst)}` : ""}`);
   }
   out.push("", r.issues.length ? c("1", "What to fix, most urgent first:") : c("32", "Nothing risky found."));
@@ -70,17 +78,36 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     process.stdout.write(HELP);
     return cmd || values.help ? 0 : 2;
   }
+  if (cmd === "networks") {
+    const gw = await defaultGateway();
+    const list = interfaces(gw);
+    const pick = pickNetwork(list);
+    if (!list.length) process.stdout.write("No private networks found. Are you connected to Wi-Fi?\n");
+    for (const i of list) process.stdout.write(`${i === pick ? c("32", "→ ") : "  "}${i.cidr.padEnd(18)}${i.name}${i.address ? ` (this computer: ${i.address})` : ""}${i.gateway ? c("32", "  has the router") : ""}${i.virtual ? c("2", "  virtual, skipped") : ""}\n`);
+    if (pick) process.stdout.write(`\nA scan would use ${pick.cidr}. To pick another: lamplight scan --network <network>\n`);
+    return 0;
+  }
+  if (cmd === "demo") {
+    const scan = withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS);
+    const out = values.out ?? "lamplight-demo.json";
+    writeFileSync(out, JSON.stringify({ ...scan, source: "lamplight" }, null, 2));
+    process.stderr.write(`Saved the example home to ${out}. Open it at the Lamplight site, or run: lamplight report ${out}\n\n`);
+    process.stdout.write(printReport(analyse(scan)));
+    return 0;
+  }
   if (cmd === "scan") {
-    const local = localNetwork();
+    const gw = await defaultGateway();
+    const local = pickNetwork(interfaces(gw));
     const cidr = values.network ?? local?.cidr;
-    if (!cidr) throw new Error("Couldn't find this computer's network. Pass --network 192.168.1.0/24.");
+    if (!cidr) throw new Error("Couldn't find this computer's network. Run lamplight networks, then pass --network 192.168.1.0/24.");
+    const self = values.network ? interfaces(gw).find((i) => i.cidr === values.network)?.address : local?.address;
     const ports = values.ports?.split(",").map((p) => {
       const n = Number(p.trim());
       if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`"${p}" isn't a port number.`);
       return n;
     });
-    process.stderr.write(`Scanning ${cidr}. This takes about a minute…\n`);
-    const scan = await scanNetwork({ cidr, ports, onProgress: (d, t) => process.stderr.write(`\r${Math.round((d / t) * 100)}%`) });
+    process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes about a minute…\n`);
+    const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r${t}   `) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     writeFileSync(out, JSON.stringify(scan, null, 2));
     process.stderr.write(`\rFound ${scan.devices.length} devices. Saved to ${out}.\n\n`);

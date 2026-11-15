@@ -123,3 +123,20 @@ describe("comparing scans", () => {
     expect(compare(b, { ...a, devices: [] })).toEqual([{ type: "left", device: b.devices[0] }]);
   });
 });
+
+describe("what devices say about themselves", () => {
+  it("uses Bonjour services and the model a device reports", () => {
+    expect(classify(dev({ details: { services: ["_googlecast._tcp"], model: "Chromecast" } })).kind).toBe("tv");
+    expect(classify(dev({ details: { services: ["_ipp._tcp", "_uscan._tcp"] } })).kind).toBe("printer");
+    expect(classify(dev({ details: { netbios: { name: "RAVI-LAPTOP" } } })).kind).toBe("computer");
+  });
+
+  it("flags an expired certificate and a login page without encryption", () => {
+    const d = dev({ ports: tcp(5000, 5001), details: { web: [{ port: 5000, login: true, title: "Admin" }], tls: [{ port: 5001, expires: "2020-01-01T00:00:00Z" }] } });
+    expect(ids(d)).toEqual(expect.arrayContaining(["cert-expired", "login-http"]));
+  });
+
+  it("doesn't ask what a device is when it told us its name", () => {
+    expect(ids(dev({ mac: "DA:71:0E:52:19:B3", details: { name: "Living Room TV" } }))).not.toContain("unknown");
+  });
+});

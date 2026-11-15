@@ -1,3 +1,5 @@
+import type { Details, Scan } from "./types";
+
 /**
  * A made-up family home, scanned twice a week apart, written out as real `nmap -oX` XML so the
  * demo goes through the same parser as your own scans. MAC prefixes are real vendor prefixes;
@@ -65,3 +67,32 @@ export const DEMO_XML_TONIGHT = toNmapXml(
   [...BASE.map((h) => (h.ip === "192.168.1.2" ? { ...h, ports: [[21, "ftp", "Synology DiskStation NAS ftpd"] as P, ...h.ports!] } : h)), NEW_TV_BOX].sort((a, b) => +a.ip.split(".")[3] - +b.ip.split(".")[3]),
   TONIGHT,
 );
+
+/**
+ * What the example home's devices say about themselves when the Lamplight scanner asks
+ * (Bonjour, UPnP, NetBIOS, their web pages and certificates). nmap doesn't collect these, so
+ * they're added on top of the XML above.
+ */
+export const DEMO_DETAILS: Record<string, Details> = {
+  "192.168.1.1": { name: "Archer C6", model: "Archer C6 v2", maker: "TP-Link", web: [{ port: 80, status: 200, title: "TL-Archer C6 login", login: true }], rtt: 2 },
+  "192.168.1.2": { name: "DiskStation", model: "DS220+", maker: "Synology Inc.", services: ["_smb._tcp", "_afpovertcp._tcp", "_http._tcp", "_device-info._tcp"], web: [{ port: 5000, status: 200, title: "DiskStation - Synology DiskStation", server: "nginx", login: true }], tls: [{ port: 5001, subject: "synology", issuer: "Synology Inc. CA", expires: "2026-09-30T00:00:00Z" }], rtt: 1 },
+  "192.168.1.5": { name: "Home", model: "Raspberry Pi 4 Model B", services: ["_home-assistant._tcp", "_ssh._tcp"], web: [{ port: 8123, status: 200, title: "Home Assistant", server: "Python/3.12 aiohttp/3.9.5", login: true }], rtt: 3 },
+  "192.168.1.10": { name: "Anna's MacBook Air", model: "MacBookAir10,1", services: ["_airplay._tcp", "_raop._tcp", "_rfb._tcp", "_companion-link._tcp"], rtt: 6 },
+  "192.168.1.11": { name: "Ravi's iPhone", model: "iPhone15,2", services: ["_companion-link._tcp", "_apple-mobdev2._tcp"], rtt: 41 },
+  "192.168.1.14": { netbios: { name: "RAVI-LAPTOP", group: "WORKGROUP" }, services: ["_workstation._tcp"], rtt: 4 },
+  "192.168.1.20": { rtt: 18 },
+  "192.168.1.22": { name: "Living Room", model: "Sonos One SL", maker: "Sonos, Inc.", services: ["_sonos._tcp", "_spotify-connect._tcp", "_airplay._tcp", "_raop._tcp"], rtt: 5 },
+  "192.168.1.23": { name: "Kitchen", model: "Echo Dot (4th Gen)", maker: "Amazon", services: ["_spotify-connect._tcp"], rtt: 9 },
+  "192.168.1.24": { name: "Living Room TV", model: "X96 Max Plus", services: ["_googlecast._tcp", "_androidtvremote2._tcp"], web: [{ port: 8008, status: 404 }], rtt: 7 },
+  "192.168.1.30": { model: "DS-2CD2043G2-I", maker: "Hikvision", web: [{ port: 80, status: 200, title: "Hikvision", server: "App-webs/", login: true }], rtt: 4 },
+  "192.168.1.31": { web: [{ port: 80, status: 200, title: "IPCAM", server: "thttpd/2.25b 29dec2003", login: true }], rtt: 12 },
+  "192.168.1.40": { name: "HP OfficeJet Pro 9010", model: "OfficeJet Pro 9010 series", maker: "HP", services: ["_ipp._tcp", "_ipps._tcp", "_pdl-datastream._tcp", "_uscan._tcp", "_http._tcp"], web: [{ port: 80, status: 200, title: "HP OfficeJet Pro 9010 series" }], tls: [{ port: 443, subject: "HPA1B2C3", issuer: "HPA1B2C3", expires: "2036-01-01T00:00:00Z", selfSigned: true }], rtt: 8 },
+  "192.168.1.50": { rtt: 23 },
+  "192.168.1.51": { name: "Garden lights", web: [{ port: 80, status: 200, title: "Garden lights" }], rtt: 15 },
+  "192.168.1.60": { rtt: 3 },
+};
+
+/** Adds what devices said about themselves to a scan, as the Lamplight scanner would. */
+export function withDetails(scan: Scan, details: Record<string, Details>): Scan {
+  return { ...scan, devices: scan.devices.map((d) => (details[d.ip] ? { ...d, details: { ...d.details, ...details[d.ip] } } : d)) };
+}

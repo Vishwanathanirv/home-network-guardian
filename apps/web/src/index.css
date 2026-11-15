@@ -2,79 +2,33 @@
 
 /*
  * Lamplight works like a maps app, but the map is your house. The plan fills the screen and
- * you pan and zoom it; search, filters and a sheet float on top on frosted glass. By day the
- * plan is a clean map; by night (dark mode) the house goes dark and each device is a lamp:
- * warm when it's fine, amber or red when it needs attention. Everything is set in Atkinson
+ * you pan and zoom it; search, filters and a sheet float on top on frosted glass. The house is
+ * always at night: each device is a lamp, warm when it's fine, amber or red when it needs
+ * attention. Everything is set in Atkinson
  * Hyperlegible, a face made for easy reading.
  */
+/* Night only: the house is dark and each device is a lamp. */
 :root {
-  --bg: #e6ecee;
-  --grid: #d3dde2;
-  --room: #f7f9f9;
-  --room-out: #edf2ef;
-  --wall: #2b3237;
-  --label: #5b666d;
-  --ink: #172026;
-  --muted: #4f5b62;
-  --faint: #7c878e;
-  --panel: #fbfcfc;
-  --line: #c8d2d7;
-  --accent: #1d5e8a;
-  --ok: #22806a;
-  --warn: #b8780a;
-  --risk: #c0392b;
-  --lamp: #22806a;
-  --glow: transparent;
-  --glass: rgba(251, 252, 252, 0.82);
-  --chip: rgba(251, 252, 252, 0.9);
-  --shadow: 0 1px 2px rgba(23, 32, 38, 0.08), 0 10px 30px -10px rgba(23, 32, 38, 0.28);
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0d1318;
-    --grid: #151f27;
-    --room: #131c23;
-    --room-out: #10181d;
-    --wall: #63768a;
-    --label: #8496a5;
-    --ink: #e5ebef;
-    --muted: #a3b1bc;
-    --faint: #6f808d;
-    --panel: #131b21;
-    --line: #23303a;
-    --accent: #7db8e6;
-    --ok: #ffc766;
-    --warn: #ffa53a;
-    --risk: #ff6655;
-    --lamp: #ffc766;
-    --glow: 1;
-    --glass: rgba(19, 27, 33, 0.8);
-    --chip: rgba(19, 27, 33, 0.88);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 40px -12px rgba(0, 0, 0, 0.8);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0d1318;
-  --grid: #151f27;
-  --room: #131c23;
-  --room-out: #10181d;
-  --wall: #63768a;
+  --bg: #0b1116;
+  --grid: #131c24;
+  --room: #121a21;
+  --room-out: #0f171c;
+  --wall: #5d7084;
   --label: #8496a5;
   --ink: #e5ebef;
   --muted: #a3b1bc;
   --faint: #6f808d;
-  --panel: #131b21;
-  --line: #23303a;
+  --panel: #121a20;
+  --panel-2: #18222a;
+  --line: #22303a;
   --accent: #7db8e6;
-  --ok: #ffc766;
+  --ok: #4fd1a1;
   --warn: #ffa53a;
   --risk: #ff6655;
   --lamp: #ffc766;
   --glow: 1;
-  --glass: rgba(19, 27, 33, 0.8);
-  --chip: rgba(19, 27, 33, 0.88);
+  --glass: rgba(18, 26, 32, 0.94);
+  --chip: rgba(18, 26, 32, 0.9);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 40px -12px rgba(0, 0, 0, 0.8);
   color-scheme: dark;
 }
@@ -85,6 +39,7 @@
   --color-muted: var(--muted);
   --color-faint: var(--faint);
   --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-ok: var(--ok);

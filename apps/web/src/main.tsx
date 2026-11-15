@@ -5,10 +5,13 @@ import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/red-hat-mono";
 import "./index.css";
 import { KIND_NAME, SEVERITY_RANK, type DeviceReport, type Severity } from "@lamplight/core";
-import { displayName, issueKey, keyOf, roomFor, ROOMS, useDone, useHome, useLights, usePlaces } from "./lib";
+import { DeviceSheet } from "./device";
+import { displayName, issueKey, keyOf, roomFor, ROOMS, useDone, useHome, usePlaces } from "./lib";
 import { MapView, type MapHandle } from "./MapView";
 import { FloorPlan, layout, planHeight, W } from "./plan";
-import { ChangesSheet, DeviceRow, DeviceSheet, HomeSheet, HowSheet, ScansSheet } from "./sheets";
+import { NetworkSheet } from "./network";
+import { ScansSheet } from "./run";
+import { ChangesSheet, DeviceRow, HomeSheet, HowSheet } from "./sheets";
 
 const useMedia = (q: string) =>
   useSyncExternalStore(
@@ -48,7 +51,6 @@ function App() {
   const loc = useLocation();
   const navigate = useNavigate();
   const wide = useMedia("(min-width: 768px)");
-  const [lights, toggleLights] = useLights();
   const map = useRef<MapHandle>(null);
   const search = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -102,6 +104,7 @@ function App() {
   useEffect(() => {
     const p = selected && pos.get(selected);
     if (p) requestAnimationFrame(() => map.current?.focus(p.x + 12, p.y + 12));
+    if (selected && !wide) setDetent((x) => (x === "peek" ? "half" : x));
   }, [selected]);
 
   const close = () => {
@@ -138,6 +141,7 @@ function App() {
   if (device) body = <DeviceSheet key={device.ip} d={device} isNew={isNew(device)} onClose={close} />;
   else if (page === "/changes") body = <ChangesSheet onClose={close} onPick={pick} />;
   else if (page === "/scans") body = <ScansSheet onClose={close} />;
+  else if (page === "/network") body = <NetworkSheet onClose={close} onPick={pick} />;
   else if (page === "/how") body = <HowSheet onClose={close} />;
   else if (matches)
     body = (
@@ -235,8 +239,11 @@ function App() {
         <button className="glass mapbtn rounded-xl" onClick={() => map.current?.fit()} aria-label="Show the whole house" title="Show the whole house (0)">
           <Icon d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
         </button>
-        <button className="glass mapbtn rounded-xl" onClick={toggleLights} aria-label={lights === "day" ? "Turn the lights off (night view)" : "Turn the lights on (day view)"} title={lights === "day" ? "Night view" : "Day view"}>
-          <Icon d={lights === "day" ? "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" : "M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"} />
+        <button className="glass mapbtn rounded-xl" onClick={() => navigate("/network")} aria-label="Your network" title="Your network">
+          <Icon d="M12 3v4M5 21v-4h14v4M12 13V7M5 17v-4h14v4M9 3h6v4H9z" />
+        </button>
+        <button className="glass mapbtn rounded-xl" onClick={() => navigate("/scans")} aria-label="Scan your home: commands" title="Scan your home: commands">
+          <Icon d="M4 17l6-6-6-6M12 19h8" />
         </button>
       </div>
 

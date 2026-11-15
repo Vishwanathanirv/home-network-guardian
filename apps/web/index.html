@@ -4,15 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Lamplight shows every device on your home network on a floor plan of your house, points out the risky ones, and explains how to fix them in plain English." />
+    <meta name="theme-color" content="#0b1116" />
     <meta name="author" content="Vishwanathan R" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Lamplight, who's on your home network</title>
-    <script>
-      try {
-        const t = localStorage.getItem("lamplight-theme");
-        if (t === "day" || t === "night") document.documentElement.dataset.theme = t === "day" ? "light" : "dark";
-      } catch {}
-    </script>
   </head>
   <body>
     <div id="root"></div>

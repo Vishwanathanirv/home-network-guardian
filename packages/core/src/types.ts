@@ -20,6 +20,27 @@ export type Device = {
   ports: Port[];
   /** Free-text hints like SSDP device descriptions. */
   hints?: string[];
+  /** What the device said about itself when asked (Lamplight scanner only). */
+  details?: Details;
+};
+
+/** What a device tells you about itself if you ask nicely: Bonjour, UPnP, NetBIOS, its web page and certificate. */
+export type Details = {
+  /** The name its owner gave it, like "Living Room TV". */
+  name?: string;
+  model?: string;
+  /** Maker as the device reports it (UPnP), which can differ from the network-card maker. */
+  maker?: string;
+  /** Bonjour (mDNS) services it announces, like _googlecast._tcp. */
+  services?: string[];
+  /** Windows computer name and workgroup (NetBIOS). */
+  netbios?: { name: string; group?: string };
+  /** What its web pages say. */
+  web?: { port: number; status?: number; title?: string; server?: string; login?: boolean }[];
+  /** Its HTTPS certificates. */
+  tls?: { port: number; subject?: string; issuer?: string; expires?: string; selfSigned?: boolean }[];
+  /** Fastest answer in milliseconds. */
+  rtt?: number;
 };
 
 export type Scan = {

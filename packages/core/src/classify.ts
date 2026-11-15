@@ -45,9 +45,34 @@ const HOST_CLUES: [RegExp, Kind][] = [
   [/router|gateway|modem|fritz|livebox|hub|openwrt|unifi|ubnt|eero|orbi|deco/i, "router"],
 ];
 
+/** Bonjour services that say what a device is. */
+const SERVICE_CLUES: [RegExp, Kind, string][] = [
+  [/^_googlecast\./, "tv", "It announces Chromecast (Google Cast)."],
+  [/^_androidtvremote2?\./, "tv", "It announces an Android TV remote service."],
+  [/^_amzn-wplay\./, "tv", "It announces Amazon Fire TV casting."],
+  [/^_airplay\./, "tv", "It announces AirPlay."],
+  [/^_(ipp|ipps|printer|pdl-datastream|scanner|uscan)\./, "printer", "It announces printing or scanning."],
+  [/^_(sonos|spotify-connect|raop)\./, "speaker", "It announces music playback."],
+  [/^_hap\./, "smart", "It's a HomeKit accessory."],
+  [/^_(matter|matterc)\./, "smart", "It's a Matter smart-home device."],
+  [/^_(companion-link|apple-mobdev2|rdlink)\./, "phone", "It announces Apple's phone-to-device link."],
+  [/^_(smb|afpovertcp|workstation|ssh|sftp-ssh|rfb)\./, "computer", "It announces file sharing or remote login, like a computer."],
+  [/^_home-assistant\./, "computer", "It runs Home Assistant."],
+];
+
+const MODEL_CLUES: [RegExp, Kind][] = [
+  [/macbook|imac|mac(mini|pro|studio)|thinkpad|latitude|optiplex|surface (laptop|pro)|windows/i, "computer"],
+  [/iphone|ipad|galaxy s|pixel \d|redmi|oneplus/i, "phone"],
+  [/appletv|apple tv|chromecast|bravia|shield|fire ?tv|roku|google tv|android tv/i, "tv"],
+  [/homepod|echo|nest (mini|audio|hub)|google home|sonos|play:|one sl/i, "speaker"],
+  [/laserjet|officejet|deskjet|envy|pixma|ecotank|mfc-|hl-/i, "printer"],
+  [/diskstation|ds\d{3}|ts-\d{3}|my cloud/i, "nas"],
+  [/ipc|camera|doorbell|nvr/i, "camera"],
+];
+
 /** Guesses what a device is, with the reasons, so the guess can be checked. */
 export function classify(d: Device, gateway?: string): { kind: Kind; vendor?: string; confidence: "sure" | "likely" | "guess"; why: string[] } {
-  const vendor = d.vendor || vendorOf(d.mac);
+  const vendor = d.vendor || vendorOf(d.mac) || d.details?.maker;
   const clues: Clue[] = [];
   const ports = new Set(d.ports.map((p) => p.port));
   const text = [d.os, ...(d.hints ?? []), ...d.ports.map((p) => `${p.product ?? ""} ${p.banner ?? ""}`)].join(" ");
@@ -56,6 +81,15 @@ export function classify(d: Device, gateway?: string): { kind: Kind; vendor?: st
   if (vendor) for (const [re, kind, w] of VENDOR_CLUES) if (re.test(vendor)) clues.push({ kind, weight: w, why: `Made by ${vendor}.` });
   if (d.hostname) for (const [re, kind] of HOST_CLUES) if (re.test(d.hostname)) clues.push({ kind, weight: 3, why: `It calls itself "${d.hostname}".` });
   if (d.mac && isRandomMac(d.mac)) clues.push({ kind: "phone", weight: 2, why: "It uses a private (random) MAC address, which phones, tablets and laptops do." });
+
+  const info = d.details;
+  for (const svc of info?.services ?? []) for (const [re, kind, why] of SERVICE_CLUES) if (re.test(svc)) clues.push({ kind, weight: 3, why });
+  const model = [info?.model, info?.name].filter(Boolean).join(" ");
+  if (model) for (const [re, kind] of MODEL_CLUES) if (re.test(model)) clues.push({ kind, weight: 4, why: `It says it's a "${info?.model ?? info?.name}".` });
+  if (info?.netbios) clues.push({ kind: "computer", weight: 2, why: `It has a Windows network name (${info.netbios.name}).` });
+  if (info?.web?.some((w) => /router|gateway|modem|tp-link|netgear|tenda|jiofiber|airtel|d-link|asus|archer|deco|mikrotik|openwrt|luci/i.test(`${w.title} ${w.server}`))) clues.push({ kind: "router", weight: 2, why: "Its web page looks like a router's settings page." });
+  if (info?.web?.some((w) => /camera|webcam|nvr|dvr|hikvision|dahua|ipc/i.test(`${w.title} ${w.server}`))) clues.push({ kind: "camera", weight: 3, why: "Its web page looks like a camera's." });
+  if (info?.web?.some((w) => /printer|laserjet|officejet|epson|brother|canon/i.test(`${w.title} ${w.server}`))) clues.push({ kind: "printer", weight: 3, why: "Its web page looks like a printer's." });
 
   const has = (...p: number[]) => p.some((x) => ports.has(x));
   if (has(554, 8554)) clues.push({ kind: "camera", weight: 3, why: "It streams video over RTSP (port 554)." });
