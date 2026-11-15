@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { SEVERITY_RANK, type DeviceReport, type Kind, type Severity } from "@lamplight/core";
 import { displayName, keyOf, place, roomFor, ROOMS, usePlaces, type Room } from "./lib";
 
-const W = 1000;
+export const W = 1000;
 const H = 640;
 const DOOR_Y = H + 20;
 
@@ -26,7 +26,7 @@ export const toneOf = (s: Severity | null) => (!s || s === "info" ? "var(--ok)" 
 type Placed = { d: DeviceReport; x: number; y: number; room: string | null };
 
 /** Lays devices out in rows inside their room, or along the doorstep below the house. */
-function layout(devices: DeviceReport[], places: Record<string, { room?: string }>): Placed[] {
+export function layout(devices: DeviceReport[], places: Record<string, { room?: string }>): Placed[] {
   const groups = new Map<string | null, DeviceReport[]>();
   for (const d of devices) {
     const r = roomFor(d, places[keyOf(d)]);
@@ -50,13 +50,37 @@ function layout(devices: DeviceReport[], places: Record<string, { room?: string 
   return out;
 }
 
-export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: DeviceReport[]; selected?: string; onSelect: (ip: string) => void; isNew: (d: DeviceReport) => boolean }) {
+/** The plan's size in its own units, which grows when devices wait on the doorstep. */
+export function planHeight(doorstep: number) {
+  return DOOR_Y + (doorstep ? 130 + Math.floor((doorstep - 1) / 9) * 84 : 30);
+}
+
+export function FloorPlan({
+  devices,
+  selected,
+  onSelect,
+  isNew,
+  worstOf = (d) => d.worst,
+  open = (d) => d.issues.length,
+  dim = () => false,
+}: {
+  devices: DeviceReport[];
+  selected?: string;
+  onSelect: (ip: string) => void;
+  isNew: (d: DeviceReport) => boolean;
+  /** The worst problem still to do (ticked-off ones don't count). */
+  worstOf?: (d: DeviceReport) => Severity | null;
+  /** How many problems are still to do. */
+  open?: (d: DeviceReport) => number;
+  /** Devices hidden by a search or filter are dimmed, not removed, so the house stays recognisable. */
+  dim?: (d: DeviceReport) => boolean;
+}) {
   const places = usePlaces();
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ ip: string; x: number; y: number; moved: boolean } | null>(null);
   const placed = layout(devices, places);
   const doorstep = placed.filter((p) => !p.room);
-  const height = DOOR_Y + (doorstep.length ? 130 + Math.floor((doorstep.length - 1) / 9) * 84 : 30);
+  const height = planHeight(doorstep.length);
 
   const toSvg = (e: RPointerEvent) => {
     const pt = svg.current!.createSVGPoint();
@@ -70,8 +94,10 @@ export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: Dev
     <svg
       ref={svg}
       viewBox={`-12 -12 ${W + 24} ${height + 24}`}
-      className="h-auto w-full touch-pan-x touch-pan-y select-none"
-      role="img"
+      width={W + 24}
+      height={height + 24}
+      className="block select-none overflow-visible"
+      role="group"
       aria-label={`Floor plan with ${devices.length} devices`}
       onPointerMove={(e) => {
         if (!drag) return;
@@ -94,7 +120,7 @@ export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: Dev
       {ROOMS.map((r) => (
         <g key={r.id}>
           <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={r.outside ? "var(--room-out)" : "var(--room)"} stroke="var(--wall)" strokeWidth={r.outside ? 1.5 : 6} strokeDasharray={r.outside ? "6 6" : undefined} />
-          <text x={r.x + 16} y={r.y + 30} className="hand" fontSize={19} fill="var(--label)">
+          <text x={r.x + 16} y={r.y + 30} className="maplabel" fontSize={17} fill="var(--label)">
             {r.name}
           </text>
         </g>
@@ -119,7 +145,7 @@ export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: Dev
           </g>
         ),
       )}
-      <text x={546} y={496} textAnchor="middle" className="hand" fontSize={14} fill="var(--label)">
+      <text x={546} y={496} textAnchor="middle" className="maplabel" fontSize={14} fill="var(--label)">
         front door
       </text>
 
@@ -127,7 +153,7 @@ export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: Dev
       {doorstep.length > 0 && (
         <g>
           <rect x={60} y={DOOR_Y} width={W - 120} height={118 + Math.floor((doorstep.length - 1) / 9) * 84} rx={10} fill="none" stroke="var(--risk)" strokeWidth={1.4} strokeDasharray="3 6" />
-          <text x={80} y={DOOR_Y + 26} className="hand" fontSize={18} fill="var(--risk)">
+          <text x={80} y={DOOR_Y + 26} className="maplabel" fontSize={18} fill="var(--risk)">
             On the doorstep: devices to identify
           </text>
         </g>
@@ -137,18 +163,22 @@ export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: Dev
         const dragging = drag?.ip === d.ip && drag.moved;
         const px = dragging ? drag.x : x;
         const py = dragging ? drag.y : y;
-        const tone = toneOf(d.worst);
+        const worst = worstOf(d);
+        const count = open(d);
+        const tone = toneOf(worst);
         const sel = selected === d.ip;
         const name = displayName(d, places[keyOf(d)]);
         return (
           <g
             key={d.ip}
             transform={`translate(${px} ${py})`}
-            className="cursor-grab"
+            className="cursor-grab transition-opacity"
+            opacity={dim(d) ? 0.18 : 1}
             style={{ ["--tone" as string]: tone, touchAction: "none" }}
             tabIndex={0}
             role="button"
-            aria-label={`${name}, ${d.worst && d.worst !== "info" ? `${d.issues.length} to fix` : "fine"}${isNew(d) ? ", new" : ""}`}
+            data-device={d.ip}
+            aria-label={`${name}, ${count ? `${count} to fix` : "fine"}${isNew(d) ? ", new" : ""}`}
             onPointerDown={(e) => {
               (e.target as Element).setPointerCapture?.(e.pointerId);
               const p = toSvg(e);
@@ -159,18 +189,18 @@ export function FloorPlan({ devices, selected, onSelect, isNew }: { devices: Dev
             {isNew(d) && <circle r={22} fill="none" stroke="var(--accent)" strokeWidth={2} className="new-ring" />}
             <circle r={sel ? 27 : 24} fill="var(--panel)" stroke={tone} strokeWidth={sel ? 4 : 2.5} className="lamp" />
             <g transform="translate(-12 -12)">
-              <path d={ICON[d.kind]} fill="none" stroke={d.worst && SEVERITY_RANK[d.worst] >= 2 ? tone : "var(--ink)"} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+              <path d={ICON[d.kind]} fill="none" stroke={worst && SEVERITY_RANK[worst] >= 2 ? tone : "var(--ink)"} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
             </g>
-            {d.issues.length > 0 && d.worst !== "info" && (
+            {count > 0 && (
               <g transform="translate(17 -18)">
                 <circle r={9} fill={tone} />
                 <text textAnchor="middle" y={4} fontSize={11.5} fontWeight={700} fill="var(--panel)">
-                  {d.issues.length}
+                  {count}
                 </text>
               </g>
             )}
-            <text y={42} textAnchor="middle" className="hand" fontSize={13.5} fill="var(--ink)">
-              {name.length > 13 ? `${name.slice(0, 12)}…` : name}
+            <text y={42} textAnchor="middle" className="maplabel" fontSize={12.5} fill="var(--ink)">
+              {name.length > 12 ? `${name.slice(0, 11)}…` : name}
             </text>
           </g>
         );

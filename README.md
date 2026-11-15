@@ -4,6 +4,8 @@
 
 Lamplight shows every device on your home network on a **floor plan of your house**. Risky devices glow red or amber, new ones get a ring, and anything nobody recognises waits **on the doorstep**. Tap a device to see what it is, why Lamplight thinks so, and exactly what to do, in plain English written for the person who looks after the family Wi-Fi rather than a security engineer.
 
+It works like a maps app, except the map is your house: the plan fills the screen, you drag and pinch to move around it, a search box and filters float on top, and the details slide up in a sheet.
+
 ![The house at night](docs/screenshots/night.png)
 
 ## Why
@@ -16,17 +18,21 @@ Many homes now have more than a dozen connected devices, and few people could na
 - **Works out what each one is.** It looks up the maker in the IEEE MAC address registry (about 40,000 entries), reads the device's own name and the services it answers on (554 is a video stream, 9100 a printer, 62078 an iPhone), and shows the clues it used and how sure it is. Phones and laptops that hide behind a random "private" MAC address are recognised as such.
 - **Puts it in a room.** Devices go where their name says (`echo-kitchen`, `driveway-cam`) or where that kind of device usually lives. Drag them to the right room; Lamplight remembers.
 - **Says what to fix, and when.** "Tonight" for critical problems (Telnet on a camera, Android debugging on a TV box, software with a notorious hole), "this week" for things like UPnP on the router or an open camera stream, and network-wide advice such as moving gadgets to the guest network. Every item has steps someone without a networking background can follow.
+- **Keeps a to-do list.** Tick a problem off when you've fixed it: the device's badge on the plan updates and a progress bar shows how far you've got.
+- **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out.
 - **Notices change.** Compare two scans to see who joined, who left, and what started answering. The scanner exits with code 1 when a new device joins, so a nightly cron job can email you.
 
 ![A device opened](docs/screenshots/device.png)
 
-![What changed since last week](docs/screenshots/changes.png)
+![Searching for cameras](docs/screenshots/search.png)
+
+![On a phone](docs/screenshots/mobile.png)
 
 ## Try it
 
 The live demo shows a made-up family home scanned twice, a week apart. Since then, an Android TV box has joined with debugging left on, the NAS has started serving FTP, and an unidentified phone is on the doorstep. The demo goes through the same nmap parser as a real scan.
 
-To see your own home, open **Scan your home**:
+To see your own home, tap **Scan your home**:
 
 ```bash
 # The Lamplight scanner: finds your network by itself, about a minute

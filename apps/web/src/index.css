@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 /*
- * Lamplight draws your network as a house plan. By day it's an architect's drawing on cool
- * vellum; by night (dark mode) the house goes dark and each device is a lamp: warm when it's
- * fine, amber or red when it needs attention. Room and device labels are hand-lettered like a
- * drawing; everything you read for instructions is set in Atkinson Hyperlegible, a face made
- * for easy reading.
+ * Lamplight works like a maps app, but the map is your house. The plan fills the screen and
+ * you pan and zoom it; search, filters and a sheet float on top on frosted glass. By day the
+ * plan is a clean map; by night (dark mode) the house goes dark and each device is a lamp:
+ * warm when it's fine, amber or red when it needs attention. Everything is set in Atkinson
+ * Hyperlegible, a face made for easy reading.
  */
 :root {
   --bg: #e6ecee;
@@ -25,6 +25,9 @@
   --risk: #c0392b;
   --lamp: #22806a;
   --glow: transparent;
+  --glass: rgba(251, 252, 252, 0.82);
+  --chip: rgba(251, 252, 252, 0.9);
+  --shadow: 0 1px 2px rgba(23, 32, 38, 0.08), 0 10px 30px -10px rgba(23, 32, 38, 0.28);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -46,6 +49,9 @@
     --risk: #ff6655;
     --lamp: #ffc766;
     --glow: 1;
+    --glass: rgba(19, 27, 33, 0.8);
+    --chip: rgba(19, 27, 33, 0.88);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 40px -12px rgba(0, 0, 0, 0.8);
     color-scheme: dark;
   }
 }
@@ -67,6 +73,9 @@
   --risk: #ff6655;
   --lamp: #ffc766;
   --glow: 1;
+  --glass: rgba(19, 27, 33, 0.8);
+  --chip: rgba(19, 27, 33, 0.88);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 40px -12px rgba(0, 0, 0, 0.8);
   color-scheme: dark;
 }
 
@@ -83,17 +92,17 @@
   --color-risk: var(--risk);
   --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Red Hat Mono Variable", ui-monospace, monospace;
-  --font-hand: "Architects Daughter", "Segoe Print", cursive;
 }
 
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
   background: var(--bg);
   color: var(--ink);
 }
 body {
+  overflow: hidden;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -141,8 +150,38 @@ body {
     color: var(--ink);
     padding: 0.5rem 0.7rem;
   }
-  .hand {
-    font-family: var(--font-hand);
+  /* Map labels: rooms and devices. */
+  .maplabel {
+    font-family: var(--font-sans);
+    font-weight: 650;
+    paint-order: stroke;
+    stroke: var(--room);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+  }
+  /* Floating chrome over the map. */
+  .glass {
+    background: var(--glass);
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+  }
+  .mapbtn {
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    color: var(--ink);
+  }
+  .mapbtn:hover {
+    background: color-mix(in oklab, var(--ink) 7%, transparent);
+  }
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
 }
 
@@ -168,4 +207,27 @@ body {
     animation: none;
     opacity: 0.5;
   }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.rise {
+  animation: rise 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
+
+[data-device]:focus {
+  outline: none;
+}
+[data-device]:focus-visible .lamp {
+  stroke: var(--accent);
+  stroke-width: 5;
 }

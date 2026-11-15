@@ -44,6 +44,17 @@ const active = store<{ now: string; before: string | null }>("lamplight-active-v
 /** Where you put each device and what you called it, keyed by MAC address (or IP). */
 const places = store<Record<string, { room?: string; name?: string }>>("lamplight-places-v1", {});
 const theme = store<"auto" | "day" | "night">("lamplight-theme-store", "auto");
+/** Problems you've ticked off, keyed by device + problem. */
+const done = store<Record<string, number>>("lamplight-done-v1", {});
+
+export const issueKey = (deviceKey: string | undefined, i: { id: string; port?: number }) => `${deviceKey ?? "network"}|${i.id}|${i.port ?? ""}`;
+export const useDone = () => done.use();
+export function toggleDone(key: string) {
+  const cur = { ...done.get() };
+  if (cur[key]) delete cur[key];
+  else cur[key] = Date.now();
+  done.set(cur);
+}
 
 export const useScans = () => [...own.use(), ...DEMO];
 export const useActive = () => active.use();
@@ -66,6 +77,14 @@ export const usePlaces = () => places.use();
 export function place(key: string, patch: { room?: string; name?: string }) {
   const cur = places.get();
   places.set({ ...cur, [key]: { ...cur[key], ...patch } });
+}
+
+/** Day or night as it looks right now, whatever the setting. */
+export function useLights(): ["day" | "night", () => void] {
+  const [t, set] = useTheme();
+  const dark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const now = t === "auto" ? (dark ? "night" : "day") : t;
+  return [now, () => set(now === "day" ? "night" : "day")];
 }
 
 export function useTheme() {
