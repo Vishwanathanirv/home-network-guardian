@@ -165,12 +165,6 @@ export function Atom({
         </text>
       </g>
 
-      {/* Shell name tags, not rotating. */}
-      {shells.map((s) => (
-        <text key={s.kind} x={half} y={half - s.radius - 9} textAnchor="middle" className="pointer-events-none fill-[var(--faint)] font-mono text-[11px]">
-          {KIND_NAME[s.kind].toLowerCase()} · {s.nodes.length}
-        </text>
-      ))}
     </svg>
   );
 
@@ -179,6 +173,19 @@ export function Atom({
       <MapView ref={mapRef} w={size} h={size} insets={insets}>
         {atom}
       </MapView>
+
+      {/* The rings, listed quietly in the corner instead of floating over the map. */}
+      <div data-ui className="glass pointer-events-none absolute z-10 hidden rounded-xl px-3 py-2.5 md:block" style={{ left: insets.l + 12, top: insets.t + 12 }}>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Rings, inner to outer</div>
+        <ul className="space-y-0.5">
+          {shells.map((s) => (
+            <li key={s.kind} className="flex items-center justify-between gap-4 font-mono text-[12px] text-muted">
+              <span>{KIND_NAME[s.kind].toLowerCase()}</span>
+              <span className="text-ink">{s.nodes.length}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       {hover && (
         <div data-ui className="pointer-events-none fixed z-30 w-[15rem] -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-xl border border-line bg-panel p-3 shadow-[var(--shadow)]" style={{ left: hover.x, top: hover.y }}>
           <div className="flex items-center gap-2">
