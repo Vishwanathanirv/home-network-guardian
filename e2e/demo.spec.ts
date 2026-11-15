@@ -128,3 +128,28 @@ test("the table view sorts every device, and Ctrl K jumps anywhere", async ({ pa
   await page.keyboard.press("Enter");
   await expect(details(page).getByRole("heading", { name: "hp-officejet", exact: true })).toBeVisible();
 });
+
+test("in live mode, a camera's snapshot shows right in the app", async ({ page }) => {
+  const { DEMO_DETAILS, DEMO_XML_TONIGHT, parseNmap, withDetails } = await import("../packages/core/src/index");
+  const scan = { ...withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS), source: "lamplight" as const, gateway: "192.168.1.1" };
+  const started = new Date(Date.now() - 600000).toISOString();
+  const presence = Object.fromEntries(scan.devices.map((d) => [d.mac!.toUpperCase(), { ip: d.ip, mac: d.mac, online: true, firstSeen: started, lastSeen: new Date().toISOString(), since: started, misses: 0 }]));
+  // A 1x1 gif, so the <img> has something real to load.
+  const gif = "R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=";
+  await page.route("http://127.0.0.1:47114/**", async (route) => {
+    const u = new URL(route.request().url());
+    if (u.pathname === "/fetch") {
+      // The driveway camera answers a snapshot; others 404.
+      if (u.searchParams.get("ip") === "192.168.1.30" && u.searchParams.get("path") === "/snapshot.cgi") return route.fulfill({ json: { status: 200, contentType: "image/jpeg", bytes: 40, dataUrl: `data:image/gif;base64,${gif}` } });
+      return route.fulfill({ status: 502, json: { error: "no" } });
+    }
+    await route.fulfill({ json: { version: 1, started, network: "192.168.1.0/24", scanning: null, scan, presence, events: [], health: [] } });
+  });
+  await page.goto("/?live=47114&key=0123456789abcdef01234567&device=192.168.1.30");
+  await details(page).getByRole("tab", { name: "View", exact: true }).click();
+  await details(page).getByRole("button", { name: "Try to view this camera" }).click();
+  await expect(details(page).getByRole("img", { name: /Snapshot from 192.168.1.30/ })).toBeVisible();
+  await expect(details(page).getByText("This camera is open")).toBeVisible();
+  // And a device's page can be opened directly on its real address.
+  await expect(details(page).getByRole("link", { name: "http://192.168.1.30:80", exact: true })).toHaveAttribute("href", "http://192.168.1.30:80/");
+});

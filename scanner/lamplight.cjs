@@ -566,6 +566,7 @@ var oui_default = { source: "IEEE OUI registry via the oui-data package (BSD-2-C
 // src/live.ts
 var import_node_crypto = require("node:crypto");
 var import_node_http2 = __toESM(require("node:http"), 1);
+var import_node_https = __toESM(require("node:https"), 1);
 
 // src/health.ts
 var import_node_dns = require("node:dns");
@@ -1147,6 +1148,46 @@ async function internetCheck(gateway, locations, router) {
 }
 
 // src/live.ts
+function fetchResource(target, timeout = 4e3, limit = 3e6) {
+  return new Promise((resolve) => {
+    let u;
+    try {
+      u = new URL(target);
+    } catch {
+      return resolve(void 0);
+    }
+    const lib = u.protocol === "https:" ? import_node_https.default : import_node_http2.default;
+    const chunks = [];
+    let size = 0;
+    let truncated = false;
+    const req = lib.request(u, { method: "GET", timeout, rejectUnauthorized: false, headers: { "user-agent": "lamplight", accept: "image/*,text/html,*/*" }, agent: false }, (res) => {
+      const type = String(res.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim().toLowerCase();
+      res.on("data", (c2) => {
+        size += c2.length;
+        if (size > limit) {
+          truncated = true;
+          req.destroy();
+        } else chunks.push(c2);
+      });
+      const done = () => {
+        const buf = Buffer.concat(chunks);
+        const out = { status: res.statusCode ?? 0, contentType: type, bytes: size, server: typeof res.headers.server === "string" ? res.headers.server.slice(0, 120) : void 0, truncated: truncated || void 0 };
+        if (type.startsWith("image/")) out.dataUrl = `data:${type};base64,${buf.toString("base64")}`;
+        else if (/^(text\/|application\/(json|xml|javascript))/.test(type) || !type) {
+          const text = buf.toString("utf8");
+          out.text = text.slice(0, 2e4);
+          out.title = text.match(/<title[^>]*>([^<]{1,140})<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
+        }
+        resolve(out);
+      };
+      res.on("end", done);
+      res.on("close", done);
+    });
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(size ? void 0 : void 0));
+    req.end();
+  });
+}
 var QUICK = [80, 443, 22, 53, 445, 62078, 7e3, 8008, 554, 8080];
 var keyOf = (d) => d.mac?.toUpperCase() || d.ip;
 var nameOf = (d) => d?.details?.name ?? d?.hostname?.replace(/\.(home|lan|local)$/i, "") ?? d?.vendor;
@@ -1275,6 +1316,25 @@ function startLive(o) {
       void fullScan("Scanning again, as asked");
       res.writeHead(202, { "content-type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
+    }
+    if (url.pathname === "/fetch" && req.method === "GET") {
+      const ip = url.searchParams.get("ip") ?? "";
+      const port = Number(url.searchParams.get("port") ?? 80);
+      const scheme = url.searchParams.get("scheme") === "https" ? "https" : "http";
+      const path = url.searchParams.get("path") || "/";
+      if (!isPrivate(ip) || !Number.isInteger(port) || port < 1 || port > 65535 || !hostsIn(o.cidr).includes(ip)) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: "Only devices on the network you're watching." }));
+      }
+      void fetchResource(`${scheme}://${ip}:${port}${path.startsWith("/") ? path : `/${path}`}`).then((r) => {
+        if (!r) {
+          res.writeHead(502, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ error: "The device didn't answer." }));
+        }
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(r));
+      });
+      return;
     }
     res.writeHead(404).end();
   });

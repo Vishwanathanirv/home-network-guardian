@@ -1,8 +1,56 @@
 import { randomBytes } from "node:crypto";
 import http from "node:http";
-import { compare, ipNum, type Device, type LiveEvent, type LiveState } from "@lamplight/core";
+import https from "node:https";
+import { compare, ipNum, isPrivate, type Device, type LiveEvent, type LiveState } from "@lamplight/core";
 import { connectTime } from "./health";
 import { arpTable, hostsIn, pool, probe, scanNetwork } from "./net";
+
+export type Fetched = { status: number; contentType: string; title?: string; server?: string; bytes: number; text?: string; dataUrl?: string; truncated?: boolean };
+
+/** GETs one resource from a device: an image comes back as a data URL, text (HTML, JSON) as itself. */
+export function fetchResource(target: string, timeout = 4000, limit = 3_000_000): Promise<Fetched | undefined> {
+  return new Promise((resolve) => {
+    let u: URL;
+    try {
+      u = new URL(target);
+    } catch {
+      return resolve(undefined);
+    }
+    const lib = u.protocol === "https:" ? https : http;
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let truncated = false;
+    const req = lib.request(u, { method: "GET", timeout, rejectUnauthorized: false, headers: { "user-agent": "lamplight", accept: "image/*,text/html,*/*" }, agent: false }, (res) => {
+      const type = String(res.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim().toLowerCase();
+      res.on("data", (c: Buffer) => {
+        size += c.length;
+        if (size > limit) {
+          truncated = true;
+          req.destroy();
+        } else chunks.push(c);
+      });
+      const done = () => {
+        const buf = Buffer.concat(chunks);
+        const out: Fetched = { status: res.statusCode ?? 0, contentType: type, bytes: size, server: typeof res.headers.server === "string" ? res.headers.server.slice(0, 120) : undefined, truncated: truncated || undefined };
+        if (type.startsWith("image/")) out.dataUrl = `data:${type};base64,${buf.toString("base64")}`;
+        else if (/^(text\/|application\/(json|xml|javascript))/.test(type) || !type) {
+          const text = buf.toString("utf8");
+          out.text = text.slice(0, 20000);
+          out.title = text
+            .match(/<title[^>]*>([^<]{1,140})<\/title>/i)?.[1]
+            ?.replace(/\s+/g, " ")
+            .trim();
+        }
+        resolve(out);
+      };
+      res.on("end", done);
+      res.on("close", done);
+    });
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(size ? undefined : undefined));
+    req.end();
+  });
+}
 
 /*
  * Live mode: the scanner keeps watching. A quick sweep every few seconds notices devices joining,
@@ -152,6 +200,27 @@ export function startLive(o: LiveOptions) {
       void fullScan("Scanning again, as asked");
       res.writeHead(202, { "content-type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
+    }
+    // Fetch one page or snapshot from a device on this network, so the site can show it.
+    // Only private addresses, only GET, size-capped. The browser can't reach the device; this can.
+    if (url.pathname === "/fetch" && req.method === "GET") {
+      const ip = url.searchParams.get("ip") ?? "";
+      const port = Number(url.searchParams.get("port") ?? 80);
+      const scheme = url.searchParams.get("scheme") === "https" ? "https" : "http";
+      const path = url.searchParams.get("path") || "/";
+      if (!isPrivate(ip) || !Number.isInteger(port) || port < 1 || port > 65535 || !hostsIn(o.cidr).includes(ip)) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: "Only devices on the network you're watching." }));
+      }
+      void fetchResource(`${scheme}://${ip}:${port}${path.startsWith("/") ? path : `/${path}`}`).then((r) => {
+        if (!r) {
+          res.writeHead(502, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ error: "The device didn't answer." }));
+        }
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(r));
+      });
+      return;
     }
     res.writeHead(404).end();
   });

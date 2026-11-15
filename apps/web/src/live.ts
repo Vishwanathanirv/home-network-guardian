@@ -93,6 +93,25 @@ export async function rescan() {
   void poll();
 }
 
+export type Fetched = { status: number; contentType: string; title?: string; server?: string; bytes: number; text?: string; dataUrl?: string; truncated?: boolean };
+
+/** Ask the scanner to fetch one page or snapshot from a device, since the browser can't reach it. */
+export async function peek(ip: string, port: number, scheme: "http" | "https", path: string): Promise<Fetched | { error: string }> {
+  if (live.status === "off" || !live.port) return { error: "Live mode isn't connected." };
+  try {
+    const u = new URL(`${base()}/fetch`);
+    u.searchParams.set("ip", ip);
+    u.searchParams.set("port", String(port));
+    u.searchParams.set("scheme", scheme);
+    u.searchParams.set("path", path);
+    const r = await fetch(u, { headers: { authorization: `Bearer ${live.key}` }, cache: "no-store" });
+    const body = await r.json();
+    return r.ok ? (body as Fetched) : { error: body.error ?? `The device answered ${r.status}.` };
+  } catch {
+    return { error: "Couldn't reach the scanner on this computer." };
+  }
+}
+
 /** Reads a link like ...?live=47114&key=abc, from the address bar or pasted text. */
 export function parseLiveLink(text: string): { port: number; key: string } | null {
   try {

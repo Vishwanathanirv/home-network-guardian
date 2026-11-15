@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { KIND_NAME, serviceName, type DeviceReport, type Issue } from "@lamplight/core";
 import { displayName, gradeOf, issueKey, keyOf, place, roomFor, ROOMS, scoreOf, toggleDone, useDone, useHistory, usePlaces } from "./lib";
 import { toneOf } from "./plan";
+import { LiveView } from "./liveview";
 import { Check, Glyph, Section, Steps, SubHeader, WHEN } from "./sheets";
 
 /** Bonjour service types in words. */
@@ -36,8 +37,11 @@ export const BONJOUR: Record<string, string> = {
 };
 export const bonjourName = (s: string) => BONJOUR[s.split(".")[0]] ?? s.replace(/^_/, "").replace(/\._(tcp|udp)$/, "");
 
-const TABS = ["Overview", "Fix", "Services", "History", "Raw"] as const;
-type Tab = (typeof TABS)[number];
+const ALL_TABS = ["Overview", "View", "Fix", "Services", "History", "Raw"] as const;
+type Tab = (typeof ALL_TABS)[number];
+
+/** Which ports suggest there's a page or picture worth a look. */
+const VIEWABLE = new Set([80, 443, 8080, 8443, 8000, 8008, 81, 8081, 5000, 5001, 8123, 1400, 49152]);
 
 function Row({ k, children, mono }: { k: string; children: ReactNode; mono?: boolean }) {
   return (
@@ -102,6 +106,8 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
   const notes = d.issues.filter((i) => i.severity === "info");
   const left = issues.filter((i) => !done[issueKey(keyOf(d), i)]);
   const score = scoreOf(left);
+  const canView = d.ports.some((p) => p.proto === "tcp" && (VIEWABLE.has(p.port) || info.web?.some((w) => w.port === p.port)));
+  const TABS = canView ? ALL_TABS : ALL_TABS.filter((t) => t !== "View");
   const [tab, setTab] = useState<Tab>("Overview");
   const seen = history.filter((h) => h.device).length;
   const privateMac = !!d.mac && /^[0-9A-F][26AE]/i.test(d.mac);
@@ -162,7 +168,7 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
       <div className="-mx-1 mt-4 flex gap-1 overflow-x-auto px-1 [scrollbar-width:none]" role="tablist" aria-label="Device details">
         {TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`shrink-0 rounded-full px-3 py-1.5 text-[13.5px] font-semibold ${tab === t ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}>
-            {t === "Fix" ? `Fix${left.length ? ` (${left.length})` : ""}` : t}
+            {t === "Fix" ? `Fix${left.length ? ` (${left.length})` : ""}` : t === "View" && d.kind === "camera" ? "View" : t}
           </button>
         ))}
       </div>
@@ -258,6 +264,14 @@ export function DeviceSheet({ d, isNew, onClose }: { d: DeviceReport; isNew: boo
               ))}
             </ul>
           </Section>
+        </div>
+      )}
+
+      {tab === "View" && (
+        <div role="tabpanel" aria-label="View">
+          <div className="mt-4">
+            <LiveView d={d} />
+          </div>
         </div>
       )}
 
