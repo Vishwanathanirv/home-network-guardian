@@ -222,7 +222,7 @@ export function HomeSheet({ onPick, compact }: { onPick: (ip: string) => void; c
 
 /* ───────────── A row in any list of devices */
 
-export function DeviceRow({ d, onPick, left }: { d: DeviceReport; onPick: (ip: string) => void; left?: number }) {
+export function DeviceRow({ d, onPick, left, note }: { d: DeviceReport; onPick: (ip: string) => void; left?: number; note?: string }) {
   const places = usePlaces();
   const saved = places[keyOf(d)];
   const room = ROOMS.find((r) => r.id === roomFor(d, saved));
@@ -234,6 +234,7 @@ export function DeviceRow({ d, onPick, left }: { d: DeviceReport; onPick: (ip: s
         <span className="block truncate font-semibold">{displayName(d, saved)}</span>
         <span className="block truncate text-[13px] text-muted">
           {KIND_NAME[d.kind]}, {room ? room.name.toLowerCase() : "on the doorstep"}
+          {note ? `, ${note}` : ""}
         </span>
       </span>
       {n > 0 && (

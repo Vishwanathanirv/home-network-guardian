@@ -63,6 +63,7 @@ export function FloorPlan({
   worstOf = (d) => d.worst,
   open = (d) => d.issues.length,
   dim = () => false,
+  away = () => false,
 }: {
   devices: DeviceReport[];
   selected?: string;
@@ -74,6 +75,8 @@ export function FloorPlan({
   open?: (d: DeviceReport) => number;
   /** Devices hidden by a search or filter are dimmed, not removed, so the house stays recognisable. */
   dim?: (d: DeviceReport) => boolean;
+  /** Live mode: devices that aren't on the network right now. */
+  away?: (d: DeviceReport) => boolean;
 }) {
   const places = usePlaces();
   const svg = useRef<SVGSVGElement>(null);
@@ -173,12 +176,12 @@ export function FloorPlan({
             key={d.ip}
             transform={`translate(${px} ${py})`}
             className="cursor-grab transition-opacity"
-            opacity={dim(d) ? 0.18 : 1}
+            opacity={dim(d) ? 0.18 : away(d) ? 0.42 : 1}
             style={{ ["--tone" as string]: tone, touchAction: "none" }}
             tabIndex={0}
             role="button"
             data-device={d.ip}
-            aria-label={`${name}, ${count ? `${count} to fix` : "fine"}${isNew(d) ? ", new" : ""}`}
+            aria-label={`${name}, ${count ? `${count} to fix` : "fine"}${isNew(d) ? ", new" : ""}${away(d) ? ", away" : ""}`}
             onPointerDown={(e) => {
               (e.target as Element).setPointerCapture?.(e.pointerId);
               const p = toSvg(e);
@@ -187,7 +190,7 @@ export function FloorPlan({
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(d.ip))}
           >
             {isNew(d) && <circle r={22} fill="none" stroke="var(--accent)" strokeWidth={2} className="new-ring" />}
-            <circle r={sel ? 27 : 24} fill="var(--panel)" stroke={tone} strokeWidth={sel ? 4 : 2.5} className="lamp" />
+            <circle r={sel ? 27 : 24} fill="var(--panel)" stroke={tone} strokeWidth={sel ? 4 : 2.5} strokeDasharray={away(d) ? "4 4" : undefined} className={away(d) ? undefined : "lamp"} />
             <g transform="translate(-12 -12)">
               <path d={ICON[d.kind]} fill="none" stroke={worst && SEVERITY_RANK[worst] >= 2 ? tone : "var(--ink)"} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
             </g>

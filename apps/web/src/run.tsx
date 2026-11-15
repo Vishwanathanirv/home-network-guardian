@@ -6,10 +6,10 @@ import { addScan, removeScan, setActive, useActive, useScans } from "./lib";
 import { Section, SubHeader } from "./sheets";
 
 const RAW = "https://raw.githubusercontent.com/Vishwanathanirv/home-network-guardian/main/scanner/lamplight.cjs";
-type Os = "windows" | "mac" | "linux";
+export type Os = "windows" | "mac" | "linux";
 const OS_NAME: Record<Os, string> = { windows: "Windows", mac: "Mac", linux: "Linux" };
 
-const guessOs = (): Os => {
+export const guessOs = (): Os => {
   const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
   return /windows/i.test(ua) ? "windows" : /mac os/i.test(ua) ? "mac" : "linux";
 };

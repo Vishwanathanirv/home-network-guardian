@@ -1,4 +1,4 @@
-import type { Details, Scan } from "./types";
+import type { Details, Internet, Scan } from "./types";
 
 /**
  * A made-up family home, scanned twice a week apart, written out as real `nmap -oX` XML so the
@@ -96,3 +96,18 @@ export const DEMO_DETAILS: Record<string, Details> = {
 export function withDetails(scan: Scan, details: Record<string, Details>): Scan {
   return { ...scan, devices: scan.devices.map((d) => (details[d.ip] ? { ...d, details: { ...d.details, ...details[d.ip] } } : d)) };
 }
+
+/** The example home's connection tonight, as the Lamplight scanner measures it. */
+export const DEMO_INTERNET: Internet = {
+  routerMs: 2.1,
+  internetMs: 18.4,
+  jitterMs: 3.2,
+  dnsMs: 24,
+  nxdomainHijack: true,
+  externalIp: "203.0.113.42",
+  mappings: [
+    { protocol: "UDP", externalPort: 9308, internalPort: 9308, client: "192.168.1.60", description: "PS5 Remote Play", enabled: true },
+    { protocol: "TCP", externalPort: 8081, internalPort: 80, client: "192.168.1.31", description: "IPCAM", enabled: true },
+    { protocol: "TCP", externalPort: 10554, internalPort: 554, client: "192.168.1.31", description: "IPCAM RTSP", enabled: true },
+  ],
+};

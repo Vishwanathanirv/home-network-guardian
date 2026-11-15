@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, useLocation, useNavigate, useSearchParams } from "react-router";
 import "@fontsource-variable/atkinson-hyperlegible-next";
@@ -6,7 +6,11 @@ import "@fontsource-variable/red-hat-mono";
 import "./index.css";
 import { KIND_NAME, SEVERITY_RANK, type DeviceReport, type Severity } from "@lamplight/core";
 import { DeviceSheet } from "./device";
-import { displayName, issueKey, keyOf, roomFor, ROOMS, useDone, useHome, usePlaces } from "./lib";
+import { displayName, issueKey, keyOf, roomFor, ROOMS, useDone, useHome, usePlaces, usePresence } from "./lib";
+import { dismiss, EVENT_TEXT, resume, useLive } from "./live";
+import { eventDetail, LiveSheet, TONE } from "./livesheet";
+import { Palette, type Action } from "./palette";
+import { DeviceTable } from "./table";
 import { MapView, type MapHandle } from "./MapView";
 import { FloorPlan, layout, planHeight, W } from "./plan";
 import { NetworkSheet } from "./network";
@@ -43,8 +47,28 @@ function Icon({ d, className = "h-5 w-5" }: { d: string; className?: string }) {
   );
 }
 
+resume();
+
 function App() {
   const { report, isNew } = useHome();
+  const lv = useLive();
+  const presence = usePresence();
+  const [view, setViewState] = useState<"map" | "table">(() => {
+    try {
+      return localStorage.getItem("lamplight-view") === "table" ? "table" : "map";
+    } catch {
+      return "map";
+    }
+  });
+  const setView = (v: "map" | "table") => {
+    setViewState(v);
+    try {
+      localStorage.setItem("lamplight-view", v);
+    } catch {
+      /* ignore */
+    }
+  };
+  const [palette, setPalette] = useState(false);
   const places = usePlaces();
   const done = useDone();
   const [params] = useSearchParams();
@@ -113,6 +137,12 @@ function App() {
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((x) => !x);
+        return;
+      }
+      if (palette) return;
       const typing = (e.target as HTMLElement).closest("input,textarea,select");
       if (e.key === "Escape") {
         if (q || filter) {
@@ -143,6 +173,7 @@ function App() {
   else if (page === "/scans") body = <ScansSheet onClose={close} />;
   else if (page === "/network") body = <NetworkSheet onClose={close} onPick={pick} />;
   else if (page === "/how") body = <HowSheet onClose={close} />;
+  else if (page === "/live") body = <LiveSheet onClose={close} onPick={pick} />;
   else if (matches)
     body = (
       <div>
@@ -222,10 +253,68 @@ function App() {
   return (
     <div className="relative h-dvh overflow-hidden">
       <MapView ref={map} w={W + 24} h={height} insets={insets}>
-        <FloorPlan devices={report.devices} selected={selected} onSelect={pick} isNew={isNew} worstOf={worstOf} open={(d) => leftOf(d).length} dim={(d) => !!hit && !hit.has(d.ip)} />
+        <FloorPlan devices={report.devices} selected={selected} onSelect={pick} isNew={isNew} worstOf={worstOf} open={(d) => leftOf(d).length} dim={(d) => !!hit && !hit.has(d.ip)} away={(d) => !!presence?.[keyOf(d)] && !presence[keyOf(d)].online} />
       </MapView>
 
+      {view === "table" && (
+        <section data-ui aria-label="All devices" className={`glass rise absolute z-[15] rounded-2xl ${wide ? "bottom-3 left-[408px] right-[4.5rem] top-3" : "inset-x-3 top-[7.25rem]"}`} style={{ background: "var(--panel)", ...(wide ? {} : { bottom: sheetH + 8 }) }}>
+          <DeviceTable devices={matches ?? report.devices} left={leftOf} onPick={pick} selected={selected} />
+        </section>
+      )}
+
+      {/* Live: what just happened, as it happens. */}
+      {lv.fresh.length > 0 && (
+        <div data-ui className={`absolute z-40 flex flex-col gap-2 ${wide ? "bottom-14 left-1/2 w-[24rem] -translate-x-1/2" : "inset-x-3 top-[7.25rem]"}`} role="status" aria-live="polite">
+          {lv.fresh.slice(-3).map((e) => (
+            <Toast key={e.id} id={e.id} onOpen={() => {
+              const d = report.devices.find((x) => x.ip === e.ip || (e.mac && x.mac?.toUpperCase() === e.mac.toUpperCase()));
+              if (d) pick(d.ip);
+              dismiss(e.id);
+            }}>
+              <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: TONE[e.type] }} aria-hidden />
+              <span className="min-w-0 flex-1 text-[13.5px]">
+                <span className="font-semibold">{EVENT_TEXT[e.type]}{eventDetail(e) ? ` ${eventDetail(e)}` : ""}</span>
+                <span className="block truncate text-muted">{e.name ?? "Unknown device"}, {e.ip}</span>
+              </span>
+            </Toast>
+          ))}
+        </div>
+      )}
+
+      <Palette
+        open={palette}
+        onClose={() => setPalette(false)}
+        devices={report.devices}
+        onPick={pick}
+        actions={
+          [
+            { id: "live", t: lv.status === "off" ? "Watch it live" : "Live activity", hint: "join leave alerts real time", run: () => navigate("/live") },
+            { id: "network", t: "Your network", hint: "grade internet speed router doors upnp report", run: () => navigate("/network") },
+            { id: "table", t: view === "table" ? "Show the plan" : "Show all devices as a table", hint: "list csv sort", run: () => setView(view === "table" ? "map" : "table") },
+            { id: "scan", t: "Scan your home", hint: "commands terminal cmd", run: () => navigate("/scans") },
+            { id: "changes", t: "What changed", hint: "joined compare", run: () => navigate("/changes") },
+            { id: "fit", t: "Show the whole house", hint: "zoom fit", run: () => map.current?.fit() },
+            ...FILTERS.map((f) => ({ id: `f-${f.id}`, t: `Show only: ${f.t}`, hint: "filter", run: () => setFilter(f.id) })),
+            { id: "how", t: "How it works", hint: "help", run: () => navigate("/how") },
+          ] satisfies Action[]
+        }
+      />
+
       {/* Map controls, top right like any maps app. */}
+      <button
+        data-ui
+        onClick={() => navigate("/live")}
+        className={`glass absolute z-10 flex items-center gap-2 rounded-full px-3.5 text-[13.5px] font-semibold ${wide ? "right-[4.5rem] top-3 h-10" : "right-3 top-[7.5rem] hidden"}`}
+        aria-label={lv.status === "live" ? "Live: open activity" : "Watch it live"}
+      >
+        <span className={`h-2.5 w-2.5 rounded-full ${lv.status === "live" ? "animate-pulse bg-ok" : lv.status === "off" ? "bg-faint" : "animate-pulse bg-warn"}`} aria-hidden />
+        {lv.status === "live" ? `Live, ${Object.values(presence ?? {}).filter((p) => p.online).length} online` : lv.status === "off" ? "Go live" : "Connecting…"}
+      </button>
+      {wide && (
+        <button data-ui onClick={() => setPalette(true)} className="glass absolute right-[4.5rem] top-[3.75rem] z-10 flex h-9 items-center gap-2 rounded-full px-3 text-[12.5px] font-semibold text-muted hover:text-ink" aria-label="Go to anything (Ctrl K)">
+          Go to <span className="rounded-md border border-line px-1.5 font-mono text-[11px]">Ctrl K</span>
+        </button>
+      )}
       <div data-ui className={`absolute right-3 z-10 flex flex-col gap-2 ${wide ? "top-3" : "top-[7.5rem]"}`}>
         <div className={`glass flex-col overflow-hidden rounded-xl ${wide ? "flex" : "hidden"}`}>
           <button className="mapbtn" onClick={() => map.current?.zoomBy(1.4)} aria-label="Zoom in" title="Zoom in (+)">
@@ -236,6 +325,15 @@ function App() {
             <Icon d="M5 12h14" />
           </button>
         </div>
+        {!wide && (
+          <button className="glass mapbtn relative rounded-xl" onClick={() => navigate("/live")} aria-label={lv.status === "live" ? "Live: open activity" : "Watch it live"} title="Live">
+            <Icon d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0M12 12h.01" />
+            {lv.status !== "off" && <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${lv.status === "live" ? "bg-ok" : "bg-warn"}`} />}
+          </button>
+        )}
+        <button className="glass mapbtn rounded-xl" onClick={() => setView(view === "table" ? "map" : "table")} aria-label={view === "table" ? "Show the plan" : "Show all devices as a table"} aria-pressed={view === "table"} title={view === "table" ? "Show the plan" : "Table"}>
+          <Icon d={view === "table" ? "M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3zM9 4v13M15 7v13" : "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14"} />
+        </button>
         <button className="glass mapbtn rounded-xl" onClick={() => map.current?.fit()} aria-label="Show the whole house" title="Show the whole house (0)">
           <Icon d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
         </button>
@@ -322,6 +420,23 @@ function App() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function Toast({ id, children, onOpen }: { id: number; children: ReactNode; onOpen: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(() => dismiss(id), 7000);
+    return () => clearTimeout(t);
+  }, [id]);
+  return (
+    <div className="glass rise flex items-start gap-2.5 rounded-2xl p-3">
+      <button className="flex min-w-0 flex-1 items-start gap-2.5 text-left" onClick={onOpen}>
+        {children}
+      </button>
+      <button className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-faint hover:text-ink" onClick={() => dismiss(id)} aria-label="Dismiss">
+        ×
+      </button>
     </div>
   );
 }

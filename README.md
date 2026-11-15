@@ -18,16 +18,23 @@ Many homes now have more than a dozen connected devices, and few people could na
 - **Works out what each one is.** It looks up the maker in the IEEE MAC address registry (about 40,000 entries), reads the device's own name and the services it answers on (554 is a video stream, 9100 a printer, 62078 an iPhone), and shows the clues it used and how sure it is. Phones and laptops that hide behind a random "private" MAC address are recognised as such.
 - **Puts it in a room.** Devices go where their name says (`echo-kitchen`, `driveway-cam`) or where that kind of device usually lives. Drag them to the right room; Lamplight remembers.
 - **Says what to fix, and when.** "Tonight" for critical problems (Telnet on a camera, Android debugging on a TV box, software with a notorious hole), "this week" for things like UPnP on the router or an open camera stream, and network-wide advice such as moving gadgets to the guest network. Every item has steps someone without a networking background can follow.
+- **Watches live.** Run `lamplight live` and the map updates as it happens: devices that join, go away and come back, services that start answering, and a live chart of how fast the router and the internet answer. New devices pop up on screen (and as desktop notifications if you want). The site talks only to the scanner on your own computer, with a private key from the link it prints.
+- **Checks the router's doors to the internet.** It asks the router over UPnP which ports it has opened to the internet and for which device, the same list hidden in the router's settings, and flags a camera or computer reachable from outside. It also notices when your provider shares one internet address between homes (carrier-grade NAT), and when the router's DNS makes up answers for websites that don't exist.
+- **Measures the connection.** Router and internet response times, how steady they are, and how long name lookups take.
 - **Finds out more than who's there.** The scanner asks each device about itself the way phones and computers do every day: Bonjour gives the name its owner gave it ("Living Room TV") and its model, UPnP gives the router's make and model, NetBIOS gives Windows computer names, and it reads each web page's title, whether it asks for a password, and each HTTPS certificate (who issued it, when it expires). It also times how fast each device answers.
 - **Opens every device like a profile.** Tabs for an overview (identity, what it announces, why Lamplight thinks it's what it is, and how sure), what to fix, the services it answers on, its history across scans, and the raw data. Each device and the whole network get a safety grade from A to F.
 - **Shows the whole network.** The grade, the router, the weakest devices, what's on the network, who made it all and which services answer, plus a report you can download and keep.
 - **Keeps a to-do list.** Tick a problem off when you've fixed it: the device's badge on the plan updates and a progress bar shows how far you've got.
-- **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out.
+- **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out. Ctrl K jumps to any device or action, and a table view lists every device side by side, sortable and downloadable as CSV.
 - **Notices change.** Compare two scans to see who joined, who left, and what started answering. The scanner exits with code 1 when a new device joins, so a nightly cron job can email you.
 
 ![A device opened](docs/screenshots/device.png)
 
-![The whole network](docs/screenshots/network.png)
+![Live mode: who comes and goes, and the connection, as it happens](docs/screenshots/live.png)
+
+![The internet side: speed, honest DNS, and doors open to the internet](docs/screenshots/internet.png)
+
+![Every device in a table](docs/screenshots/table.png)
 
 ![The commands, ready to copy](docs/screenshots/commands.png)
 
@@ -61,6 +68,7 @@ node lamplight.cjs networks                        # which networks this compute
 node lamplight.cjs scan [--network 192.168.1.0/24] [--out scan.json]
 node lamplight.cjs report scan.json                # what to fix, in the terminal
 node lamplight.cjs compare last.json scan.json     # who joined, what opened
+node lamplight.cjs live                            # keep watching, and see it live on the site
 node lamplight.cjs demo                            # the example home, to try it without scanning
 ```
 
@@ -73,6 +81,9 @@ How it scans:
 3. It reads short banners (SSH, Telnet, FTP), and for web ports the page's title, its `Server` header and whether it has a login form. For HTTPS ports it reads the certificate.
 4. It asks who's there the polite way: a Bonjour (mDNS) question for 25 kinds of service, a UPnP search (then reads each device's own description), and a NetBIOS name query.
 5. It reads the ARP table for hardware addresses, does reverse DNS for names, and finds the router from the default route.
+6. It asks the router (UPnP Internet Gateway Device) for its internet address and its list of port forwards, times connections to the router and to two public servers, and asks the router's DNS for a name that can't exist to see if it makes one up.
+
+In **live mode** a quick check every 15 seconds (a knock on a few common ports, then the ARP table, which catches phones that ignore knocks) notices devices arriving and leaving; a device has to miss three checks in a row to count as gone, because Wi-Fi devices doze. A full scan runs every 10 minutes and soon after anything new joins. The site reads it from `http://127.0.0.1:47114`, which listens only on this computer and only answers requests carrying the key in the printed link.
 
 It **refuses public addresses** and ranges larger than /22, and never tries to log in to anything. Only scan networks you own or are allowed to test.
 

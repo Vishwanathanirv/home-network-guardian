@@ -52,6 +52,26 @@ export type Scan = {
   /** IP of the router, when known (default gateway). */
   gateway?: string;
   devices: Device[];
+  /** How the connection to the internet looks from inside (Lamplight scanner only). */
+  internet?: Internet;
+};
+
+/** A door the router opened to the internet for a device, through UPnP. */
+export type Mapping = { protocol: "TCP" | "UDP"; externalPort: number; internalPort: number; client: string; description?: string; enabled?: boolean; lease?: number };
+
+export type Internet = {
+  /** Round trip to the router, and to two public servers, in milliseconds. */
+  routerMs?: number;
+  internetMs?: number;
+  jitterMs?: number;
+  /** How long a name lookup took, in milliseconds. */
+  dnsMs?: number;
+  /** True if the router's DNS answers for a name that doesn't exist (redirecting typos to ad pages). */
+  nxdomainHijack?: boolean;
+  /** The router's address on the internet, as the router reports it over UPnP. */
+  externalIp?: string;
+  /** Doors the router opened to the internet through UPnP. */
+  mappings?: Mapping[];
 };
 
 export type Kind = "router" | "computer" | "phone" | "tv" | "speaker" | "camera" | "printer" | "nas" | "console" | "smart" | "unknown";
@@ -70,4 +90,19 @@ export type Issue = {
   /** Steps a non-expert can follow. */
   steps: string[];
   port?: number;
+};
+
+/* ───────────── Live mode: what the scanner's local server sends the site */
+
+export type LiveEvent = { id: number; at: string; type: "joined" | "left" | "back" | "away" | "opened" | "closed" | "moved" | "scan"; ip: string; mac?: string; name?: string; detail?: string };
+export type Presence = { ip: string; mac?: string; online: boolean; firstSeen: string; lastSeen: string; since: string; misses: number };
+export type LiveState = {
+  version: 1;
+  started: string;
+  network: string;
+  scanning: { step: string; pct: number } | null;
+  scan: Scan | null;
+  presence: Record<string, Presence>;
+  events: LiveEvent[];
+  health: { at: string; routerMs?: number; internetMs?: number }[];
 };

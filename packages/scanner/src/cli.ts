@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { analyse, compare, DEMO_DETAILS, DEMO_XML_TONIGHT, KIND_NAME, parseAny, parseNmap, serviceName, setOui, withDetails, type Change, type OuiTable, type Report } from "@lamplight/core";
+import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_TONIGHT, KIND_NAME, parseAny, parseNmap, serviceName, setOui, withDetails, type Change, type OuiTable, type Report } from "@lamplight/core";
 import oui from "../../core/data/oui.json";
+import { startLive } from "./live";
 import { defaultGateway, interfaces, pickNetwork, scanNetwork } from "./net";
 
 setOui(oui as OuiTable);
@@ -14,6 +15,9 @@ Usage:
   lamplight scan [--network 192.168.1.0/24] [--out scan.json]
       Scan your own network (detected automatically) and save the result.
       Open the file at the Lamplight site to see it on a floor plan.
+  lamplight live [--network 192.168.1.0/24] [--every 10] [--port 47114]
+      Keep watching: see devices join and leave as it happens, on the site.
+      Prints a link with a private key; open it in your browser.
   lamplight demo [--out demo.json]
       Save the example home's scan, to try the site and the commands
       without scanning anything.
@@ -30,6 +34,9 @@ Options:
   --network <cidr>   Network to scan (default: this computer's /24)
   --out <file>       Where to save the scan (default: lamplight-<date>.json)
   --ports <list>     Comma-separated ports instead of the default 39
+  --every <minutes>  Live mode: minutes between full scans (default 10)
+  --port <n>         Live mode: local port for the site to read from (default 47114)
+  --site <url>       Live mode: the Lamplight site to link to
   --json             Print reports as JSON
   -h, --help         Show this help
 
@@ -50,6 +57,12 @@ function printReport(r: Report) {
   for (const d of r.devices) {
     const label = [d.details?.name ?? d.hostname ?? d.vendor ?? "unnamed", d.details?.model && `(${d.details.model})`].filter(Boolean).join(" ");
     out.push(`${c("1", d.ip.padEnd(16))}${KIND_NAME[d.kind].padEnd(22)}${label}${d.worst && d.worst !== "info" ? `  ${c(SEV_COLOR[d.worst], d.worst)}` : ""}`);
+  }
+  const net = r.scan.internet;
+  if (net) {
+    const parts = [net.routerMs !== undefined && `router ${net.routerMs} ms`, net.internetMs !== undefined && `internet ${net.internetMs} ms (jitter ${net.jitterMs ?? 0} ms)`, net.dnsMs !== undefined && `name lookup ${net.dnsMs} ms`].filter(Boolean);
+    out.push("", c("1", "Connection: ") + (parts.join(", ") || "no answer from the internet"));
+    if (net.mappings?.length) out.push(c("33", `The router has ${net.mappings.length} door${net.mappings.length === 1 ? "" : "s"} open to the internet (UPnP):`), ...net.mappings.map((m) => `  ${m.protocol} ${m.externalPort} -> ${m.client}:${m.internalPort}${m.description ? `  "${m.description}"` : ""}`));
   }
   out.push("", r.issues.length ? c("1", "What to fix, most urgent first:") : c("32", "Nothing risky found."));
   for (const sev of SEV_ORDER) {
@@ -72,7 +85,7 @@ const describe = (ch: Change) => {
 };
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
-  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, help: { type: "boolean", short: "h" } } });
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, help: { type: "boolean", short: "h" } } });
   const [cmd, ...files] = positionals;
   if (values.help || !cmd) {
     process.stdout.write(HELP);
@@ -87,8 +100,28 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (pick) process.stdout.write(`\nA scan would use ${pick.cidr}. To pick another: lamplight scan --network <network>\n`);
     return 0;
   }
+  if (cmd === "live") {
+    const gw = await defaultGateway();
+    const list = interfaces(gw);
+    const local = pickNetwork(list);
+    const cidr = values.network ?? local?.cidr;
+    if (!cidr) throw new Error("Couldn't find this computer's network. Run lamplight networks, then pass --network 192.168.1.0/24.");
+    const port = Number(values.port ?? 47114);
+    const every = Math.max(2, Number(values.every ?? 10));
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("--port must be a number from 1024 to 65535.");
+    const site = (values.site ?? "https://home-network-guardian.vercel.app").replace(/\/$/, "");
+    const live = startLive({ cidr, self: values.network ? list.find((i) => i.cidr === values.network)?.address : local?.address, port, every, log: (l) => process.stdout.write(`${l}\n`) });
+    await live.ready.catch((e: NodeJS.ErrnoException) => {
+      throw new Error(e.code === "EADDRINUSE" ? `Port ${port} is busy. Is live mode already running? Or pick another with --port.` : e.message);
+    });
+    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nThe first scan takes about a minute. Press Ctrl+C to stop.\n\n`);
+    await new Promise<void>((resolve) => process.once("SIGINT", resolve));
+    live.stop();
+    process.stdout.write("\nStopped.\n");
+    return 0;
+  }
   if (cmd === "demo") {
-    const scan = withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS);
+    const scan = { ...withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS), internet: DEMO_INTERNET, gateway: "192.168.1.1" };
     const out = values.out ?? "lamplight-demo.json";
     writeFileSync(out, JSON.stringify({ ...scan, source: "lamplight" }, null, 2));
     process.stderr.write(`Saved the example home to ${out}. Open it at the Lamplight site, or run: lamplight report ${out}\n\n`);

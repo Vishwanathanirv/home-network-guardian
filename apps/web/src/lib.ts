@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { analyse, compare, DEMO_DETAILS, DEMO_XML_LAST_WEEK, DEMO_XML_TONIGHT, parseNmap, setOui, withDetails, type Change, type DeviceReport, type Kind, type OuiTable, type Report, type Scan } from "@lamplight/core";
+import { useLive } from "./live";
+import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_LAST_WEEK, DEMO_XML_TONIGHT, parseNmap, setOui, withDetails, type Change, type DeviceReport, type Kind, type OuiTable, type Report, type Scan } from "@lamplight/core";
 
 /* ───────────── A tiny store backed by localStorage */
 
@@ -35,8 +36,8 @@ function store<T>(key: string, fallback: T) {
 export type SavedScan = { id: string; name: string; scan: Scan; demo?: boolean };
 
 const DEMO: SavedScan[] = [
-  { id: "demo-tonight", name: "Example home, tonight", scan: { ...withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS), source: "lamplight", network: "192.168.1.0/24", gateway: "192.168.1.1" }, demo: true },
-  { id: "demo-last-week", name: "Example home, last week", scan: { ...withDetails(parseNmap(DEMO_XML_LAST_WEEK), DEMO_DETAILS), source: "lamplight", network: "192.168.1.0/24", gateway: "192.168.1.1" }, demo: true },
+  { id: "demo-tonight", name: "Example home, tonight", scan: { ...withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS), source: "lamplight", network: "192.168.1.0/24", gateway: "192.168.1.1", internet: DEMO_INTERNET }, demo: true },
+  { id: "demo-last-week", name: "Example home, last week", scan: { ...withDetails(parseNmap(DEMO_XML_LAST_WEEK), DEMO_DETAILS), source: "lamplight", network: "192.168.1.0/24", gateway: "192.168.1.1", internet: { ...DEMO_INTERNET, mappings: DEMO_INTERNET.mappings!.slice(0, 1) } }, demo: true },
 ];
 
 const own = store<SavedScan[]>("lamplight-scans-v1", []);
@@ -102,19 +103,33 @@ const useOui = () =>
   );
 
 /** The current report, the previous scan's changes, and who's new. */
-export function useHome(): { report: Report; changes: Change[]; isNew: (d: DeviceReport) => boolean; now: SavedScan; before?: SavedScan } {
+export function useHome(): { report: Report; changes: Change[]; isNew: (d: DeviceReport) => boolean; now: SavedScan; before?: SavedScan; live: boolean } {
   const scans = useScans();
   const a = useActive();
   const oui = useOui();
-  const now = scans.find((s) => s.id === a.now) ?? DEMO[0];
-  const before = a.before ? scans.find((s) => s.id === a.before && s.id !== now.id) : undefined;
+  const lv = useLive();
+  const liveScan = lv.status !== "off" ? lv.state?.scan : null;
+  const saved = scans.find((s) => s.id === a.now) ?? DEMO[0];
+  // While live mode is connected, the plan shows what the scanner sees right now.
+  const now = useMemo<SavedScan>(() => (liveScan ? { id: "live", name: "Live", scan: liveScan } : saved), [liveScan, saved]);
+  const before = liveScan ? undefined : a.before ? scans.find((s) => s.id === a.before && s.id !== now.id) : undefined;
+  const started = lv.state?.started;
+  const presence = lv.state?.presence;
   return useMemo(() => {
     const report = analyse(now.scan);
     const changes = before ? compare(before.scan, now.scan) : [];
     const joined = new Set(changes.filter((c) => c.type === "joined").map((c) => keyOf(c.device)));
-    return { report, changes, isNew: (d: DeviceReport) => joined.has(keyOf(d)), now, before };
+    // Live: new means it turned up after live mode started.
+    const isNew = liveScan && presence && started ? (d: DeviceReport) => (presence[keyOf(d)]?.firstSeen ?? "") > started : (d: DeviceReport) => joined.has(keyOf(d));
+    return { report, changes, isNew, now, before, live: !!liveScan };
     // `oui` is listed because loading the vendor table changes what analyse() finds.
-  }, [now, before, oui]);
+  }, [now, before, oui, liveScan, presence, started]);
+}
+
+/** Whether each device is on the network right now, in live mode. */
+export function usePresence() {
+  const lv = useLive();
+  return lv.status !== "off" ? lv.state?.presence : undefined;
 }
 
 /* ───────────── Rooms */
@@ -160,7 +175,7 @@ export function displayName(d: DeviceReport, saved?: { name?: string }) {
 export function useHistory(d: { mac?: string; ip: string }) {
   const scans = useScans();
   const { now } = useHome();
-  return scans
+  return [...scans, ...(now.id === "live" ? [now] : [])]
     .filter((s) => !!s.demo === !!now.demo)
     .sort((a, b) => a.scan.at.localeCompare(b.scan.at))
     .map((s) => ({ scan: s, device: s.scan.devices.find((x) => keyOf(x) === keyOf(d)) }));

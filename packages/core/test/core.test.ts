@@ -140,3 +140,16 @@ describe("what devices say about themselves", () => {
     expect(ids(dev({ mac: "DA:71:0E:52:19:B3", details: { name: "Living Room TV" } }))).not.toContain("unknown");
   });
 });
+
+describe("the connection to the internet", () => {
+  const scan = (internet: Parameters<typeof analyse>[0]["internet"]) => analyse({ at: "2026-11-15T00:00:00Z", source: "lamplight", gateway: "192.168.1.1", devices: [dev({ ip: "192.168.1.31", ports: tcp(80, 554) })], internet });
+  it("puts a door to the internet on the device it leads to, worse for risky services", () => {
+    const r = scan({ externalIp: "203.0.113.42", mappings: [{ protocol: "TCP", externalPort: 10554, internalPort: 554, client: "192.168.1.31" }] });
+    expect(r.devices[0].issues[0]).toMatchObject({ id: "upnp-mapping", severity: "critical" });
+  });
+  it("is calmer behind carrier-grade NAT, and flags DNS that makes up answers", () => {
+    const r = scan({ externalIp: "100.72.10.4", nxdomainHijack: true, mappings: [{ protocol: "TCP", externalPort: 10554, internalPort: 554, client: "192.168.1.31" }] });
+    expect(r.devices[0].issues.find((i) => i.id === "upnp-mapping")?.severity).toBe("low");
+    expect(r.network.map((i) => i.id)).toContain("dns-hijack");
+  });
+});

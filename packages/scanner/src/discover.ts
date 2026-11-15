@@ -1,6 +1,7 @@
 import dgram from "node:dgram";
 import http from "node:http";
 import tls from "node:tls";
+import type { Mapping } from "@lamplight/core";
 
 /*
  * Asking devices about themselves. Every question here is one a device expects to be asked:
@@ -289,4 +290,68 @@ export function certificate(host: string, port: number, timeout = 2500): Promise
     });
     sock.on("error", () => resolve(undefined));
   });
+}
+
+/* ───────────── The router's doors to the internet (UPnP Internet Gateway Device) */
+
+function post(url: string, body: string, headers: Record<string, string>, timeout = 2500): Promise<{ status: number; body: string } | undefined> {
+  return new Promise((resolve) => {
+    const u = new URL(url);
+    const req = http.request({ host: u.hostname, port: u.port || 80, path: u.pathname + u.search, method: "POST", timeout, headers: { "content-type": 'text/xml; charset="utf-8"', "content-length": Buffer.byteLength(body), ...headers } }, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (c: string) => {
+        data += c;
+        if (data.length > 65536) req.destroy();
+      });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: data }));
+    });
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(undefined));
+    req.end(body);
+  });
+}
+
+/** Finds the WAN connection service in a UPnP description: where to send questions about the internet side. */
+export function wanService(xml: string, base: string): { type: string; control: string } | undefined {
+  for (const m of xml.matchAll(/<service>([\s\S]*?)<\/service>/gi)) {
+    const type = tag(m[1], "serviceType");
+    const ctrl = tag(m[1], "controlURL");
+    if (type && ctrl && /WAN(IP|PPP)Connection/i.test(type)) return { type, control: new URL(ctrl, base).toString() };
+  }
+  return undefined;
+}
+
+const soap = (type: string, action: string, args = "") => `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="${type}">${args}</u:${action}></s:Body></s:Envelope>`;
+
+/**
+ * Asks the router, over UPnP, for its internet address and every port it has opened for a device.
+ * This is the same list the router's own settings page shows under "UPnP"; we only read it.
+ */
+export async function igd(location: string): Promise<{ externalIp?: string; mappings: Mapping[] } | undefined> {
+  const desc = await get(location);
+  if (!desc || desc.status !== 200) return undefined;
+  const svc = wanService(desc.body, location);
+  if (!svc) return undefined;
+  const call = (action: string, args = "") => post(svc.control, soap(svc.type, action, args), { soapaction: `"${svc.type}#${action}"` });
+  const ip = await call("GetExternalIPAddress");
+  const externalIp = ip?.status === 200 ? tag(ip.body, "NewExternalIPAddress") : undefined;
+  const mappings: Mapping[] = [];
+  for (let i = 0; i < 128; i++) {
+    const r = await call("GetGenericPortMappingEntry", `<NewPortMappingIndex>${i}</NewPortMappingIndex>`);
+    if (!r || r.status !== 200) break;
+    const ext = Number(tag(r.body, "NewExternalPort"));
+    const client = tag(r.body, "NewInternalClient");
+    if (!ext || !client) break;
+    mappings.push({
+      protocol: /udp/i.test(tag(r.body, "NewProtocol") ?? "") ? "UDP" : "TCP",
+      externalPort: ext,
+      internalPort: Number(tag(r.body, "NewInternalPort")) || ext,
+      client,
+      description: tag(r.body, "NewPortMappingDescription"),
+      enabled: tag(r.body, "NewEnabled") !== "0",
+      lease: Number(tag(r.body, "NewLeaseDuration")) || undefined,
+    });
+  }
+  return { externalIp, mappings };
 }

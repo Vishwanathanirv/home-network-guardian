@@ -5,7 +5,8 @@ import net from "node:net";
 import os from "node:os";
 import { promisify } from "node:util";
 import { isPrivate, ipNum, parseArp, type Details, type Device, type Port, type Scan } from "@lamplight/core";
-import { certificate, mdns, netbios, readPage, upnpDescription } from "./discover";
+import { certificate, igd, mdns, netbios, readPage, upnpDescription } from "./discover";
+import { health } from "./health";
 
 const run = promisify(execFile);
 
@@ -114,7 +115,7 @@ const firstLine = (s: string) =>
     .slice(0, 160) || undefined;
 
 /** Runs tasks with a limit on how many are in flight. */
-async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>) {
+export async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>) {
   let i = 0;
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -124,10 +125,10 @@ async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>) {
 }
 
 /** Asks UPnP devices to announce themselves; routers with UPnP on answer as InternetGatewayDevice. */
-export function ssdp(wait = 2500, iface?: string): Promise<{ hints: Map<string, string[]>; locations: Map<string, string> }> {
+export function ssdp(wait = 2500, iface?: string): Promise<{ hints: Map<string, string[]>; locations: Map<string, string[]> }> {
   return new Promise((resolve) => {
     const found = new Map<string, string[]>();
-    const locations = new Map<string, string>();
+    const locations = new Map<string, string[]>();
     const sock = dgram.createSocket({ type: "udp4", reuseAddr: true });
     const msg = Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n');
     sock.on("message", (m, r) => {
@@ -135,7 +136,7 @@ export function ssdp(wait = 2500, iface?: string): Promise<{ hints: Map<string, 
       const server = t.match(/^server:\s*(.+)$/im)?.[1]?.trim();
       const st = t.match(/^st:\s*(.+)$/im)?.[1]?.trim();
       const loc = t.match(/^location:\s*(http:\/\/\S+)/im)?.[1];
-      if (loc && !locations.has(r.address) && new URL(loc).hostname === r.address) locations.set(r.address, loc);
+      if (loc && new URL(loc).hostname === r.address && !locations.get(r.address)?.includes(loc)) locations.set(r.address, [...(locations.get(r.address) ?? []), loc]);
       const list = found.get(r.address) ?? [];
       for (const v of [server && `SSDP server: ${server}`, st && `SSDP: ${st}`]) if (v && !list.includes(v)) list.push(v);
       found.set(r.address, list);
@@ -160,7 +161,7 @@ export function ssdp(wait = 2500, iface?: string): Promise<{ hints: Map<string, 
   });
 }
 
-async function arpTable(): Promise<Device[]> {
+export async function arpTable(): Promise<Device[]> {
   for (const [cmd, args] of [["ip", ["neigh"]], ["arp", ["-an"]], ["arp", ["-a"]]] as const) {
     try {
       const { stdout } = await run(cmd, [...args], { timeout: 5000 });
@@ -233,7 +234,7 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   const ips = [...new Set([...alive.keys(), ...macs.keys(), ...[...announced.hints.keys(), ...bonj.keys()].filter((ip) => inRange.has(ip))])];
   const [names, descs, certs] = await Promise.all([
     netbios(ips),
-    Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, url]) => [ip, await upnpDescription(url)] as const)),
+    Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, urls]) => [ip, await upnpDescription(urls[0])] as const)),
     Promise.all(ips.flatMap((ip) => (alive.get(ip) ?? []).filter((p) => TLS_PORTS.has(p.port)).map(async (p) => [ip, await certificate(ip, p.port)] as const))),
   ]);
   const devices: Device[] = await Promise.all(
@@ -259,5 +260,21 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
     }),
   );
   devices.sort((a, b) => ipNum(a.ip) - ipNum(b.ip));
-  return { at: new Date().toISOString(), source: "lamplight", network: o.cidr, gateway, devices };
+  o.onStep?.("Checking the router and the internet connection…");
+  const internet = await internetCheck(gateway, announced.locations, devices.find((d) => d.ip === gateway));
+  return { at: new Date().toISOString(), source: "lamplight", network: o.cidr, gateway, devices, internet };
+}
+
+/** Internet health, plus the router's doors to the internet if it speaks UPnP. */
+export async function internetCheck(gateway: string | undefined, locations: Map<string, string[]>, router?: Device) {
+  const port = router?.ports.find((p) => p.proto === "tcp")?.port ?? 80;
+  const [h, gw] = await Promise.all([health(gateway, port), (async () => {
+    // The router usually answers UPnP from its own address; try each description it published.
+    for (const url of gateway ? (locations.get(gateway) ?? []) : [...locations.values()].flat()) {
+      const r = await igd(url);
+      if (r) return r;
+    }
+    return undefined;
+  })()]);
+  return { ...h, ...(gw?.externalIp ? { externalIp: gw.externalIp } : {}), ...(gw ? { mappings: gw.mappings } : {}) };
 }

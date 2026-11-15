@@ -1,4 +1,5 @@
-import { KIND_NAME, serviceName, type DeviceReport, type Kind, type Report } from "@lamplight/core";
+import { useState } from "react";
+import { isCgnat, isPrivate, KIND_NAME, serviceName, type DeviceReport, type Internet, type Kind, type Report } from "@lamplight/core";
 import { ScoreRing } from "./device";
 import { displayName, gradeOf, issueKey, keyOf, scoreOf, useDone, useHome, usePlaces } from "./lib";
 import { toneOf } from "./plan";
@@ -50,6 +51,83 @@ function save(name: string, text: string, type: string) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const rate = (ms: number | undefined, good: number, ok: number) => (ms === undefined ? ["–", "no answer", "var(--faint)"] : ms <= good ? [`${ms} ms`, "good", "var(--ok)"] : ms <= ok ? [`${ms} ms`, "fine", "var(--warn)"] : [`${ms} ms`, "slow", "var(--risk)"]);
+
+/** The internet side: speed, steadiness, honest DNS, and doors the router opened to the internet. */
+function InternetPanel({ net, report, onPick, name }: { net?: Internet; report: Report; onPick: (ip: string) => void; name: (d: DeviceReport) => string }) {
+  const [show, setShow] = useState(false);
+  if (!net) return <p className="text-[13.5px] text-muted">Scan with the Lamplight scanner to see your connection's speed, whether its DNS is honest, and which doors your router opened to the internet.</p>;
+  const tiles = [
+    ["Router", ...rate(net.routerMs, 5, 20)],
+    ["Internet", ...rate(net.internetMs, 40, 120)],
+    ["Steadiness", ...(net.jitterMs === undefined ? ["–", "unknown", "var(--faint)"] : net.jitterMs <= 5 ? [`±${net.jitterMs} ms`, "steady", "var(--ok)"] : net.jitterMs <= 20 ? [`±${net.jitterMs} ms`, "a bit jumpy", "var(--warn)"] : [`±${net.jitterMs} ms`, "jumpy: calls may stutter", "var(--risk)"])],
+    ["Name lookups", ...rate(net.dnsMs, 40, 150)],
+  ];
+  const ip = net.externalIp;
+  const shared = !!ip && (isCgnat(ip) || isPrivate(ip));
+  const maps = net.mappings ?? [];
+  return (
+    <div>
+      <dl className="grid grid-cols-2 gap-2">
+        {tiles.map(([k, v, word, tone]) => (
+          <div key={k} className="rounded-xl border border-line p-2.5">
+            <dt className="text-[12px] font-semibold text-faint">{k}</dt>
+            <dd className="text-[16px] font-bold tabular-nums">{v}</dd>
+            <dd className="text-[12px] font-semibold" style={{ color: tone }}>
+              {word}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <dl className="mt-3 grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px]">
+        {ip && (
+          <>
+            <dt className="text-faint">Internet address</dt>
+            <dd>
+              <span className="font-mono">{show ? ip : ip.replace(/\.\d+\.\d+$/, ".•••.•••")}</span>{" "}
+              <button className="text-[12.5px] font-semibold text-accent" onClick={() => setShow(!show)}>
+                {show ? "Hide" : "Show"}
+              </button>
+              {shared && <span className="block text-[12.5px] text-muted">Shared with other homes by your provider (carrier-grade NAT), so nobody on the internet can reach your devices directly.</span>}
+            </dd>
+          </>
+        )}
+        {net.nxdomainHijack !== undefined && (
+          <>
+            <dt className="text-faint">DNS</dt>
+            <dd style={{ color: net.nxdomainHijack ? "var(--warn)" : undefined }}>{net.nxdomainHijack ? "Makes up answers for websites that don't exist" : "Answers honestly"}</dd>
+          </>
+        )}
+      </dl>
+      <h3 className="mt-4 text-[13px] font-bold">{maps.length ? `${maps.length} door${maps.length === 1 ? "" : "s"} open to the internet` : "No doors open to the internet"}</h3>
+      {maps.length ? (
+        <ul className="mt-1.5 divide-y divide-line">
+          {maps.map((m) => {
+            const d = report.devices.find((x) => x.ip === m.client);
+            const issue = d?.issues.find((i) => i.id === "upnp-mapping" && i.port === m.internalPort);
+            return (
+              <li key={`${m.protocol}${m.externalPort}`} className="flex items-start gap-2.5 py-2 text-[13.5px]">
+                <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: issue?.severity === "critical" ? "var(--risk)" : issue?.severity === "low" ? "var(--faint)" : "var(--warn)" }} aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div>
+                    <span className="font-mono text-faint">
+                      {m.protocol} {m.externalPort}
+                    </span>{" "}
+                    → {d ? <button className="font-semibold text-accent" onClick={() => onPick(d.ip)}>{name(d)}</button> : <span className="font-mono">{m.client}</span>}, {serviceName({ port: m.internalPort, proto: m.protocol === "UDP" ? "udp" : "tcp" })}
+                  </div>
+                  {m.description && <div className="text-[12.5px] text-muted">Opened by "{m.description}"</div>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="mt-1 text-[13px] text-muted">{net.mappings ? "Your router reports no UPnP port forwards." : "The router didn't answer UPnP questions, which usually means UPnP is off. Good."}</p>
+      )}
+    </div>
+  );
 }
 
 export function NetworkSheet({ onClose, onPick }: { onClose: () => void; onPick: (ip: string) => void }) {
@@ -109,6 +187,10 @@ export function NetworkSheet({ onClose, onPick }: { onClose: () => void; onPick:
           </div>
         ))}
       </dl>
+
+      <Section title="The internet side">
+        <InternetPanel net={report.scan.internet} report={report} onPick={onPick} name={name} />
+      </Section>
 
       {router && (
         <Section title="Your router">

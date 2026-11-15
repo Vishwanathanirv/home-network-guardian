@@ -1,6 +1,13 @@
 import { classify, KIND_NAME } from "./classify";
 import type { Device, Issue, Kind, Port, Scan, Severity } from "./types";
 import { SEVERITY_RANK } from "./types";
+import { isPrivate } from "./parse";
+
+/** 100.64.0.0/10: addresses internet providers share between many homes. */
+export const isCgnat = (ip: string) => {
+  const [a, b] = ip.split(".").map(Number);
+  return a === 100 && b >= 64 && b <= 127;
+};
 
 /** What a port is, in words a non-expert understands. */
 export const SERVICE: Record<number, string> = {
@@ -176,6 +183,34 @@ export function analyse(scan: Scan): Report {
       why: "Cheap gadgets get few updates. If one is taken over, it can reach every laptop, phone and shared folder on the same network.",
       steps: ["Turn on your router's guest network (or a separate \"IoT\" network).", "Reconnect the TV, speakers, cameras and plugs to it. Casting from your phone may need the phone on the same network, so keep the TV where you cast from.", "Keep computers, phones and storage on the main network."],
     });
+  // Doors the router opened to the internet through UPnP, on the device they lead to.
+  const net = scan.internet;
+  const cgnat = !!net?.externalIp && (isPrivate(net.externalIp) || isCgnat(net.externalIp));
+  const DANGER = new Set([21, 22, 23, 445, 554, 2323, 3389, 5555, 5900, 8554]);
+  for (const m of net?.mappings ?? []) {
+    if (m.enabled === false) continue;
+    const d = devices.find((x) => x.ip === m.client);
+    const svc = SERVICE[m.internalPort] ?? `port ${m.internalPort}`;
+    // Games consoles open ports for online play on purpose; a camera or a computer doing it is another matter.
+    const severity: Severity = cgnat ? "low" : DANGER.has(m.internalPort) ? "critical" : d?.kind === "console" ? "medium" : "high";
+    const issue: Issue = {
+      id: "upnp-mapping",
+      severity,
+      ip: m.client,
+      port: m.internalPort,
+      title: `Open to the internet: ${svc}`,
+      why: `The router has a door open from the internet (${m.protocol} port ${m.externalPort}) straight to ${d ? `this ${KIND_NAME[d.kind].toLowerCase()}` : m.client}${m.description ? `, opened by "${m.description}"` : ""}. Anyone on the internet can knock on it, and scanners do, all day.${cgnat ? " Your internet provider shares one internet address between many homes (carrier-grade NAT), so the door probably doesn't reach the real internet; it will if your provider ever gives you your own address." : ""}`,
+      steps: [`In the device's app or settings, turn off "remote access", "UPnP" or "port forwarding" if you don't need to reach it from outside.`, "Or turn off UPnP on the router, which closes every door it opened (games consoles may then need one port forwarded by hand).", "If you do need it from outside, use the maker's cloud app or a VPN instead of an open port."],
+    };
+    if (d) {
+      d.issues.push(issue);
+      d.issues.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+      d.worst = d.issues[0].severity;
+    } else network.push(issue);
+  }
+  if (net?.nxdomainHijack)
+    network.push({ id: "dns-hijack", severity: "low", title: "Your router's DNS makes up answers", why: "When you look up a website that doesn't exist, your router (or your internet provider behind it) answers anyway, usually to show you an ad page. It means something is rewriting your name lookups, which also breaks some security tools and leaks your typos.", steps: ["In the router's settings, look for \"DNS assist\", \"search assist\" or \"error redirect\" and turn it off.", "Or set the router's DNS servers to 1.1.1.1 and 8.8.8.8 (or 9.9.9.9 for one that blocks known bad sites)."] });
+
   const issues = [...devices.flatMap((d) => d.issues), ...network].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
   return { scan: { ...scan, gateway }, devices, network, issues };
 }

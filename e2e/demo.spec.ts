@@ -5,13 +5,13 @@ const details = (page: Page) => page.getByRole("region", { name: "Details" });
 
 test("the example home fills the screen and lists what to fix tonight", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /17 devices are home\. 4 need you tonight\. 2 are new\./ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /17 devices are home\. 6 need you tonight\. 2 are new\./ })).toBeVisible();
   await expect(onPlan(page, "android-tv-box")).toBeVisible();
   await expect(details(page).getByText("Android debugging is open to the network")).toBeVisible();
 
   // Ticking a problem off updates the headline and the device's badge on the plan.
   await details(page).getByRole("button", { name: "Done: Android debugging is open to the network" }).click();
-  await expect(page.getByRole("heading", { name: /3 need you tonight/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /5 need you tonight/ })).toBeVisible();
   await expect(onPlan(page, "android-tv-box")).toHaveAttribute("aria-label", /fine/);
 });
 
@@ -83,4 +83,48 @@ test("the network page grades the whole home, and the scan page has the commands
   await page.getByLabel("Your computer's address").fill("10.101.250.38");
   await expect(details(page).getByText("node lamplight.cjs scan --network 10.101.250.0/24").first()).toBeVisible();
   await expect(details(page).getByText(/curl\.exe -L -o lamplight\.cjs/)).toBeVisible();
+});
+
+test("live mode: the site reads the scanner on this computer and shows who comes and goes", async ({ page }) => {
+  const { DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_TONIGHT, parseNmap, withDetails } = await import("../packages/core/src/index");
+  const scan = { ...withDetails(parseNmap(DEMO_XML_TONIGHT), DEMO_DETAILS), source: "lamplight" as const, gateway: "192.168.1.1", internet: DEMO_INTERNET };
+  const started = new Date(Date.now() - 20 * 60_000).toISOString();
+  const t = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const presence = Object.fromEntries(scan.devices.map((d) => [d.mac!.toUpperCase(), { ip: d.ip, mac: d.mac, online: d.ip !== "192.168.1.11", firstSeen: d.ip === "192.168.1.24" ? t(2) : started, lastSeen: d.ip === "192.168.1.11" ? t(6) : t(0), since: started, misses: 0 }]));
+  let calls = 0;
+  await page.route("http://127.0.0.1:47114/**", async (route) => {
+    const auth = route.request().headers().authorization;
+    if (auth !== "Bearer 0123456789abcdef01234567") return route.fulfill({ status: 401, json: { error: "no" } });
+    calls++;
+    const events = [
+      { id: 1, at: t(19), type: "scan", ip: "192.168.1.0/24", detail: "17 devices" },
+      { id: 2, at: t(6), type: "away", ip: "192.168.1.11", name: "Ravi's iPhone" },
+      ...(calls > 1 ? [{ id: 3, at: t(0), type: "joined", ip: "192.168.1.24", mac: "1C:A4:10:39:6B:E5", name: "Living Room TV" }] : []),
+    ];
+    const after = Number(new URL(route.request().url()).searchParams.get("after"));
+    await route.fulfill({ json: { version: 1, started, network: "192.168.1.0/24", scanning: null, scan, presence, events: events.filter((e) => e.id > after), health: [{ at: t(1), routerMs: 2, internetMs: 19 }, { at: t(0), routerMs: 3, internetMs: 21 }] } });
+  });
+  await page.goto("/?live=47114&key=0123456789abcdef01234567");
+  await expect(page.getByRole("button", { name: "Live: open activity" })).toBeVisible();
+  // The key is taken out of the address bar.
+  expect(page.url()).not.toContain("key=");
+  await expect(page.getByRole("button", { name: /^iphone, .*away/ })).toBeVisible();
+  // A device joining pops up, and the activity feed has it.
+  await expect(page.getByRole("status").getByText("Joined the network")).toBeVisible({ timeout: 8000 });
+  await page.getByRole("button", { name: "Live: open activity" }).click();
+  await expect(details(page).getByText("Went away")).toBeVisible();
+  await expect(details(page).getByText(/Internet 21 ms/)).toBeVisible();
+});
+
+test("the table view sorts every device, and Ctrl K jumps anywhere", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /devices are home/ })).toBeVisible();
+  await page.getByRole("button", { name: "Show all devices as a table" }).click();
+  const table = page.getByRole("region", { name: "All devices" });
+  await table.getByRole("button", { name: /^Address/ }).click();
+  await expect(table.locator("tbody tr").first()).toContainText("192.168.1.1");
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type("officejet");
+  await page.keyboard.press("Enter");
+  await expect(details(page).getByRole("heading", { name: "hp-officejet", exact: true })).toBeVisible();
 });
