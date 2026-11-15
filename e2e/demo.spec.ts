@@ -83,7 +83,7 @@ test("the network page grades the whole home, and the scan page has the commands
   await page.getByRole("tab", { name: "Windows" }).click();
   // The no-typing path leads: one button really downloads the launcher (and the scanner).
   const dl = page.waitForEvent("download");
-  await details(page).getByRole("button", { name: /Download Lamplight/ }).click();
+  await details(page).getByRole("button", { name: /Download the Windows launcher/ }).click();
   expect((await dl).suggestedFilename()).toBe("lamplight-windows.cmd");
   // The terminal commands are still there for people who want them.
   await page.getByRole("button", { name: /Prefer to type commands/ }).click();

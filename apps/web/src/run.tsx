@@ -13,28 +13,83 @@ const LAUNCHER: Record<Os, { file: string; name: string }> = {
   linux: { file: "lamplight-mac.command", name: "launcher" },
 };
 
-/** Downloads a file for real: fetches it and saves it, so the browser can't just open it in a tab.
- *  Returns true on success. GitHub's raw files allow this; if anything blocks it, we fall back. */
-async function grab(url: string, filename: string): Promise<boolean> {
+export type Os = "windows" | "mac" | "linux";
+const OS_NAME: Record<Os, string> = { windows: "Windows", mac: "Mac", linux: "Linux" };
+
+/** Saves a text file to the user's computer. One file, so no multi-download prompt. */
+function saveText(filename: string, text: string): boolean {
   try {
-    const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) return false;
-    const blob = await r.blob();
-    const u = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
     const a = document.createElement("a");
-    a.href = u;
+    a.href = url;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(u), 3000);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
     return true;
   } catch {
     return false;
   }
 }
-export type Os = "windows" | "mac" | "linux";
-const OS_NAME: Record<Os, string> = { windows: "Windows", mac: "Mac", linux: "Linux" };
+
+/**
+ * Builds the launcher as a single self-contained file: on first run it downloads the scanner
+ * next to itself, then runs it pointed at THIS site. So the person only ever downloads one file.
+ */
+export function launcherText(os: Os): string {
+  const cjs = `${RAW_BASE}/lamplight.cjs`;
+  const site = typeof location === "undefined" ? "https://home-network-guardian.vercel.app" : location.origin;
+  if (os === "windows") {
+    return [
+      "@echo off",
+      "title Lamplight",
+      'cd /d "%~dp0"',
+      "where node >nul 2>nul",
+      "if errorlevel 1 (",
+      "  echo.",
+      "  echo   Lamplight needs Node.js, which is free.",
+      "  echo   1. Get it from https://nodejs.org  ^(the big green LTS button^)",
+      "  echo   2. Install it, then double-click this file again.",
+      "  echo.",
+      "  pause",
+      "  exit /b",
+      ")",
+      'if not exist "%~dp0lamplight.cjs" (',
+      "  echo   First run: downloading the scanner...",
+      `  curl -L -o "%~dp0lamplight.cjs" ${cjs}`,
+      "  if errorlevel 1 (",
+      "    echo   Could not download the scanner. Check your internet and run this again.",
+      "    pause",
+      "    exit /b",
+      "  )",
+      ")",
+      "echo   Starting Lamplight and opening your browser...",
+      "echo   Keep this window open while you use it. Close it to stop watching.",
+      `node "%~dp0lamplight.cjs" live --site ${site}`,
+      "pause",
+      "",
+    ].join("\r\n");
+  }
+  // Mac and Linux share a bash launcher.
+  return [
+    "#!/bin/bash",
+    'cd "$(dirname "$0")" || exit 1',
+    "if ! command -v node >/dev/null 2>&1; then",
+    '  echo "Lamplight needs Node.js, which is free: https://nodejs.org"',
+    '  echo "Install it, then double-click this file again."',
+    '  read -n 1 -s -r -p "Press any key to close."',
+    "  exit 1",
+    "fi",
+    "if [ ! -f lamplight.cjs ]; then",
+    '  echo "First run: downloading the scanner..."',
+    `  curl -fsSL -o lamplight.cjs ${cjs} || { echo "Could not download the scanner. Check your internet and run this again."; read -n 1 -s -r; exit 1; }`,
+    "fi",
+    'echo "Starting Lamplight and opening your browser..."',
+    `node lamplight.cjs live --site "${site}"`,
+    "",
+  ].join("\n");
+}
 
 export const guessOs = (): Os => {
   const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
@@ -127,34 +182,21 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
         </div>
         <ol className="mt-2.5 space-y-2.5 text-[13.5px] text-muted">
           <li>
-            <span className="font-semibold text-ink">1. Get the files</span> (one click saves both to your Downloads):
+            <span className="font-semibold text-ink">1. Download one file</span> (the launcher):
             <div className="mt-1.5">
               <button
                 className="btn btn-accent"
                 disabled={got === "working"}
-                onClick={async () => {
+                onClick={() => {
                   setGot("working");
-                  const a = await grab(`/${LAUNCHER[os].file}`, LAUNCHER[os].file);
-                  const b = await grab("/lamplight.cjs", "lamplight.cjs");
-                  setGot(a && b ? "done" : "error");
+                  const ok = saveText(LAUNCHER[os].file, launcherText(os));
+                  setGot(ok ? "done" : "error");
                 }}
               >
-                {got === "working" ? "Saving…" : got === "done" ? "✓ Saved to Downloads" : `Download Lamplight (${OS_NAME[os]})`}
+                {got === "done" ? `✓ Saved ${LAUNCHER[os].file}` : `Download the ${OS_NAME[os] === "Linux" ? "launcher" : `${OS_NAME[os]} launcher`}`}
               </button>
-              {got === "error" && (
-                <p className="mt-1.5 text-[12.5px] text-warn">
-                  Your browser blocked the download. Get them one at a time:{" "}
-                  <a className="font-semibold text-accent underline" href={`/${LAUNCHER[os].file}`} download={LAUNCHER[os].file}>
-                    launcher
-                  </a>{" "}
-                  and{" "}
-                  <a className="font-semibold text-accent underline" href="/lamplight.cjs" download="lamplight.cjs">
-                    scanner
-                  </a>
-                  .
-                </p>
-              )}
-              {got === "done" && <p className="mt-1.5 text-[12.5px] text-faint">Two files: {LAUNCHER[os].file} and lamplight.cjs. Keep them together in the same folder.</p>}
+              {got === "error" && <p className="mt-1.5 text-[12.5px] text-warn">Your browser blocked it. You can get the launcher and scanner from the terminal section below instead.</p>}
+              {got === "done" && <p className="mt-1.5 text-[12.5px] text-faint">Saved to your Downloads. It's a tiny text file — the scanner comes down automatically the first time you run it.</p>}
             </div>
           </li>
           <li>
@@ -162,7 +204,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
             {os === "windows" ? 'Windows may warn about an unknown file — choose "More info", then "Run anyway".' : os === "mac" ? 'The first time, right-click it and choose "Open", then "Open" again (macOS guards downloaded files).' : "You may need to mark it executable (chmod +x) first."}
           </li>
           <li>
-            <span className="font-semibold text-ink">3. That's it.</span> It finds your network, scans, and opens this site by itself. Keep the little window open while you use it; close it to stop.
+            <span className="font-semibold text-ink">3. That's it.</span> The first run downloads the scanner next to the launcher, finds your network, scans, and opens this site by itself. Keep the little window open while you use it; close it to stop.
           </li>
         </ol>
         <p className="mt-2.5 text-[12.5px] text-faint">It needs Node.js (free, one-time). If it's missing, the launcher says so and links to it.</p>
