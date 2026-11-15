@@ -6,6 +6,7 @@ const details = (page: Page) => page.getByRole("region", { name: "Details" });
 test("the example home fills the screen and lists what to fix tonight", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /17 devices are home\. 6 need you tonight\. 2 are new\./ })).toBeVisible();
+  await page.getByRole("button", { name: "House plan", exact: true }).click();
   await expect(onPlan(page, "Living Room TV")).toBeVisible();
   await expect(details(page).getByText("Android debugging is open to the network")).toBeVisible();
 
@@ -17,6 +18,7 @@ test("the example home fills the screen and lists what to fix tonight", async ({
 
 test("tapping a device on the plan opens it, and it can be renamed and moved", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "House plan", exact: true }).click();
   await onPlan(page, "Living Room TV").click();
   await expect(details(page).getByRole("heading", { name: "Living Room TV", exact: true })).toBeVisible();
   // Its Bonjour service and model are shown.
@@ -79,8 +81,10 @@ test("the network page grades the whole home, and the scan page has the commands
 
   await page.goto("/scans");
   await page.getByRole("tab", { name: "Windows" }).click();
-  // The no-typing path leads, with a double-click launcher to download.
-  await expect(details(page).getByRole("link", { name: /Download the Windows launcher/ })).toHaveAttribute("href", /lamplight-windows\.cmd$/);
+  // The no-typing path leads: one button really downloads the launcher (and the scanner).
+  const dl = page.waitForEvent("download");
+  await details(page).getByRole("button", { name: /Download Lamplight/ }).click();
+  expect((await dl).suggestedFilename()).toBe("lamplight-windows.cmd");
   // The terminal commands are still there for people who want them.
   await page.getByRole("button", { name: /Prefer to type commands/ }).click();
   await page.getByLabel("Your computer's address").fill("10.101.250.38");

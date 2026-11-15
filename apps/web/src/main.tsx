@@ -58,9 +58,9 @@ function App() {
   const [view, setViewState] = useState<"map" | "atom" | "table">(() => {
     try {
       const v = localStorage.getItem("lamplight-view");
-      return v === "table" || v === "atom" ? v : "map";
+      return v === "map" || v === "table" ? v : "atom";
     } catch {
-      return "map";
+      return "atom";
     }
   });
   const setView = (v: "map" | "atom" | "table") => {

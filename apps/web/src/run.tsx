@@ -12,6 +12,27 @@ const LAUNCHER: Record<Os, { file: string; name: string }> = {
   mac: { file: "lamplight-mac.command", name: "Mac launcher" },
   linux: { file: "lamplight-mac.command", name: "launcher" },
 };
+
+/** Downloads a file for real: fetches it and saves it, so the browser can't just open it in a tab.
+ *  Returns true on success. GitHub's raw files allow this; if anything blocks it, we fall back. */
+async function grab(url: string, filename: string): Promise<boolean> {
+  try {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) return false;
+    const blob = await r.blob();
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 3000);
+    return true;
+  } catch {
+    return false;
+  }
+}
 export type Os = "windows" | "mac" | "linux";
 const OS_NAME: Record<Os, string> = { windows: "Windows", mac: "Mac", linux: "Linux" };
 
@@ -64,6 +85,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [os, setOs] = useState<Os>(guessOs);
   const [showCmd, setShowCmd] = useState(false);
+  const [got, setGot] = useState<"idle" | "working" | "done" | "error">("idle");
   const [addr, setAddr] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -97,33 +119,53 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
-      {/* The no-typing path: two downloads and a double-click. */}
+      {/* The no-typing path: one click gets both files, then double-click. */}
       <div className="mt-4 rounded-2xl border border-accent/40 bg-[color-mix(in_oklab,var(--accent)_7%,transparent)] p-4">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-accent px-2 py-0.5 text-[11.5px] font-bold text-panel">Easiest</span>
           <h3 className="font-bold">No typing — just double-click</h3>
         </div>
-        <ol className="mt-2.5 space-y-2 text-[13.5px] text-muted">
+        <ol className="mt-2.5 space-y-2.5 text-[13.5px] text-muted">
           <li>
-            <span className="font-semibold text-ink">1. Put both files in one folder</span> (your Downloads is fine):
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              <a className="btn primary" href={`${RAW_BASE}/${LAUNCHER[os].file}`} download={LAUNCHER[os].file}>
-                Download the {LAUNCHER[os].name}
-              </a>
-              <a className="btn" href={RAW} download="lamplight.cjs">
-                Download the scanner
-              </a>
+            <span className="font-semibold text-ink">1. Get the files</span> (one click saves both to your Downloads):
+            <div className="mt-1.5">
+              <button
+                className="btn btn-accent"
+                disabled={got === "working"}
+                onClick={async () => {
+                  setGot("working");
+                  const a = await grab(`/${LAUNCHER[os].file}`, LAUNCHER[os].file);
+                  const b = await grab("/lamplight.cjs", "lamplight.cjs");
+                  setGot(a && b ? "done" : "error");
+                }}
+              >
+                {got === "working" ? "Saving…" : got === "done" ? "✓ Saved to Downloads" : `Download Lamplight (${OS_NAME[os]})`}
+              </button>
+              {got === "error" && (
+                <p className="mt-1.5 text-[12.5px] text-warn">
+                  Your browser blocked the download. Get them one at a time:{" "}
+                  <a className="font-semibold text-accent underline" href={`/${LAUNCHER[os].file}`} download={LAUNCHER[os].file}>
+                    launcher
+                  </a>{" "}
+                  and{" "}
+                  <a className="font-semibold text-accent underline" href="/lamplight.cjs" download="lamplight.cjs">
+                    scanner
+                  </a>
+                  .
+                </p>
+              )}
+              {got === "done" && <p className="mt-1.5 text-[12.5px] text-faint">Two files: {LAUNCHER[os].file} and lamplight.cjs. Keep them together in the same folder.</p>}
             </div>
           </li>
           <li>
-            <span className="font-semibold text-ink">2. Double-click the {OS_NAME[os] === "Linux" ? "launcher" : `${OS_NAME[os]} launcher`}.</span>{" "}
-            {os === "windows" ? 'Windows may warn about an unknown file; choose "More info", then "Run anyway".' : os === "mac" ? 'The first time, right-click it and choose "Open", then "Open" again (macOS guards downloaded files).' : "You may need to mark it executable (chmod +x) first."}
+            <span className="font-semibold text-ink">2. Double-click {OS_NAME[os] === "Linux" ? "the launcher" : LAUNCHER[os].file}.</span>{" "}
+            {os === "windows" ? 'Windows may warn about an unknown file — choose "More info", then "Run anyway".' : os === "mac" ? 'The first time, right-click it and choose "Open", then "Open" again (macOS guards downloaded files).' : "You may need to mark it executable (chmod +x) first."}
           </li>
           <li>
             <span className="font-semibold text-ink">3. That's it.</span> It finds your network, scans, and opens this site by itself. Keep the little window open while you use it; close it to stop.
           </li>
         </ol>
-        <p className="mt-2.5 text-[12.5px] text-faint">It needs Node.js (free). If you don't have it, the launcher tells you and links to it, then you double-click again.</p>
+        <p className="mt-2.5 text-[12.5px] text-faint">It needs Node.js (free, one-time). If it's missing, the launcher says so and links to it.</p>
       </div>
 
       <button className="mt-4 flex w-full items-center justify-between text-[13.5px] font-semibold" onClick={() => setShowCmd(!showCmd)} aria-expanded={showCmd}>

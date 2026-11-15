@@ -451,3 +451,25 @@ body {
     padding: 0;
   }
 }
+
+@keyframes nucleusPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+.nucleus-ring {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: nucleusPulse 3s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nucleus-ring {
+    animation: none;
+    opacity: 0;
+  }
+}

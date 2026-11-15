@@ -67,20 +67,30 @@ export function Atom({
 
   const half = size / 2;
   const maxR = shells.length ? shells[shells.length - 1].radius : 130;
-  const nodeEl = (p: Placed, spin: boolean) => {
+  const moving = typeof matchMedia === "undefined" || !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const nodeEl = (p: Placed, spin: boolean, i: number) => {
     const d = p.d;
     const worst = worstOf(d);
     const tone = toneOf(worst);
     const off = presence?.[keyOf(d)] && !presence[keyOf(d)].online;
     const sel = d.ip === selected;
+    const dur = (p.r / 90 + 1.6).toFixed(2);
+    const begin = `${-((i * 1.7) % 3).toFixed(2)}s`;
     return (
       <g key={d.ip} transform={`translate(${half + p.x} ${half + p.y})`} opacity={dim(d) ? 0.12 : off ? 0.4 : 1}>
         <line x1={0} y1={0} x2={-p.x} y2={-p.y} stroke={worst ? tone : "var(--line)"} strokeWidth={worst ? 1.1 : 0.6} opacity={worst ? 0.5 : 0.28} />
+        {/* A packet of data travelling along the bond toward the router. */}
+        {moving && !off && !dim(d) && (
+          <circle r={worst ? 2.1 : 1.6} fill={worst ? tone : "var(--accent)"}>
+            <animateMotion path={`M0 0 L${-p.x} ${-p.y}`} dur={`${dur}s`} begin={begin} repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;0.9;0" keyTimes="0;0.15;0.7;1" dur={`${dur}s`} begin={begin} repeatCount="indefinite" />
+          </circle>
+        )}
         <g
           className="cursor-pointer"
           role="button"
           tabIndex={0}
-          aria-label={`${displayName(d, places[keyOf(d)])}, ${worst ? "needs attention" : "fine"}`}
+          aria-label={`${displayName(d, places[keyOf(d)])}, ${worst ? "needs attention" : "fine"}${off ? ", away" : ""}`}
           data-device={d.ip}
           onClick={() => onPick(d.ip)}
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onPick(d.ip))}
@@ -134,8 +144,13 @@ export function Atom({
       {/* Each shell is a rotating group; its label stays still on top. */}
       {shells.map((s) => (
         <g key={s.kind} className="shell" style={{ animationDuration: `${s.dur}s`, animationDirection: s.dir === -1 ? "reverse" : "normal" }}>
-          {s.nodes.map((p) => nodeEl(p, s.nodes.length > 10))}
+          {s.nodes.map((p, i) => nodeEl(p, s.nodes.length > 10, i))}
         </g>
+      ))}
+
+      {/* Expanding pulse rings from the core. */}
+      {moving && [0, 1, 2].map((n) => (
+        <circle key={n} className="nucleus-ring" cx={half} cy={half} r={30} fill="none" stroke="var(--accent)" strokeWidth={1.5} style={{ animationDelay: `${n}s` }} />
       ))}
 
       {/* The nucleus: the router. */}
