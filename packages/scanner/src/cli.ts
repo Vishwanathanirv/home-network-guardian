@@ -157,11 +157,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       return n;
     });
     process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes about a minute…\n`);
-    const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r${t}   `) });
+    const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r\x1b[2K${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1b[2K${t}`) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     writeFileSync(out, JSON.stringify(scan, null, 2));
     const full = resolve(out);
-    process.stderr.write(`\r${c("32", `Found ${scan.devices.length} devices.`)} Saved to:\n  ${full}\n(that's the folder your terminal is in. Open it at ${c("36", "home-network-guardian.vercel.app")} with "Scan your home".)\n\n`);
+    process.stderr.write(`\r\x1b[2K${c("32", `Found ${scan.devices.length} devices.`)}\nSaved the file here:\n  ${c("36", full)}\n\nThat's the folder your terminal is in — not your Downloads folder.\nTo see it as the atom map, open ${c("36", "home-network-guardian.vercel.app")}, click "Scan your home", and pick that file.\n\n`);
     process.stdout.write(values.json ? JSON.stringify(analyse(scan), null, 2) : printReport(analyse(scan)));
     return 0;
   }

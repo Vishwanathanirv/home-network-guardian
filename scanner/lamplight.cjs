@@ -1546,13 +1546,16 @@ The first scan takes about a minute. Press Ctrl+C to stop.
     });
     process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes about a minute\u2026
 `);
-    const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r${Math.round(d / t * 100)}% `), onStep: (t) => process.stderr.write(`\r${t}   `) });
+    const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r\x1B[2K${Math.round(d / t * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1B[2K${t}`) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     (0, import_node_fs.writeFileSync)(out, JSON.stringify(scan, null, 2));
     const full = (0, import_node_path.resolve)(out);
-    process.stderr.write(`\r${c("32", `Found ${scan.devices.length} devices.`)} Saved to:
-  ${full}
-(that's the folder your terminal is in. Open it at ${c("36", "home-network-guardian.vercel.app")} with "Scan your home".)
+    process.stderr.write(`\r\x1B[2K${c("32", `Found ${scan.devices.length} devices.`)}
+Saved the file here:
+  ${c("36", full)}
+
+That's the folder your terminal is in \u2014 not your Downloads folder.
+To see it as the atom map, open ${c("36", "home-network-guardian.vercel.app")}, click "Scan your home", and pick that file.
 
 `);
     process.stdout.write(values.json ? JSON.stringify(analyse(scan), null, 2) : printReport(analyse(scan)));
