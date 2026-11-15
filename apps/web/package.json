@@ -1,0 +1,29 @@
+{
+  "name": "@lamplight/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "oui": "tsx ../../scripts/build-oui.ts && cp ../../packages/core/data/oui.json public/oui.json",
+    "dev": "npm run oui && vite",
+    "build": "npm run oui && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@lamplight/core": "*",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^7.18.5"
+  },
+  "devDependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource/architects-daughter": "^5.3.0",
+    "@fontsource-variable/red-hat-mono": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "^4.3.5",
+    "vite": "^6.4.6"
+  }
+}

@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/*
+ * Lamplight draws your network as a house plan. By day it's an architect's drawing on cool
+ * vellum; by night (dark mode) the house goes dark and each device is a lamp: warm when it's
+ * fine, amber or red when it needs attention. Room and device labels are hand-lettered like a
+ * drawing; everything you read for instructions is set in Atkinson Hyperlegible, a face made
+ * for easy reading.
+ */
+:root {
+  --bg: #e6ecee;
+  --grid: #d3dde2;
+  --room: #f7f9f9;
+  --room-out: #edf2ef;
+  --wall: #2b3237;
+  --label: #5b666d;
+  --ink: #172026;
+  --muted: #4f5b62;
+  --faint: #7c878e;
+  --panel: #fbfcfc;
+  --line: #c8d2d7;
+  --accent: #1d5e8a;
+  --ok: #22806a;
+  --warn: #b8780a;
+  --risk: #c0392b;
+  --lamp: #22806a;
+  --glow: transparent;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1318;
+    --grid: #151f27;
+    --room: #131c23;
+    --room-out: #10181d;
+    --wall: #63768a;
+    --label: #8496a5;
+    --ink: #e5ebef;
+    --muted: #a3b1bc;
+    --faint: #6f808d;
+    --panel: #131b21;
+    --line: #23303a;
+    --accent: #7db8e6;
+    --ok: #ffc766;
+    --warn: #ffa53a;
+    --risk: #ff6655;
+    --lamp: #ffc766;
+    --glow: 1;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1318;
+  --grid: #151f27;
+  --room: #131c23;
+  --room-out: #10181d;
+  --wall: #63768a;
+  --label: #8496a5;
+  --ink: #e5ebef;
+  --muted: #a3b1bc;
+  --faint: #6f808d;
+  --panel: #131b21;
+  --line: #23303a;
+  --accent: #7db8e6;
+  --ok: #ffc766;
+  --warn: #ffa53a;
+  --risk: #ff6655;
+  --lamp: #ffc766;
+  --glow: 1;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-risk: var(--risk);
+  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Red Hat Mono Variable", ui-monospace, monospace;
+  --font-hand: "Architects Daughter", "Segoe Print", cursive;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+}
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .vellum {
+    background-color: var(--bg);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 0.45rem 0.85rem;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .btn:hover {
+    border-color: var(--faint);
+  }
+  .btn.primary {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .field {
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    padding: 0.5rem 0.7rem;
+  }
+  .hand {
+    font-family: var(--font-hand);
+  }
+}
+
+/* A device lamp: glows at night, a plain coloured ring by day. */
+.lamp {
+  filter: drop-shadow(0 0 calc(var(--glow, 0) * 9px) var(--tone));
+}
+@keyframes ring {
+  from {
+    r: 22;
+    opacity: 0.8;
+  }
+  to {
+    r: 40;
+    opacity: 0;
+  }
+}
+.new-ring {
+  animation: ring 1.8s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .new-ring {
+    animation: none;
+    opacity: 0.5;
+  }
+}

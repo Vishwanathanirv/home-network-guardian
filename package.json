@@ -1,0 +1,39 @@
+{
+  "name": "lamplight",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Lamplight: see every device on your home network on a floor plan of your house, which ones are risky, and how to fix them in plain English.",
+  "author": "Vishwanathan R <mail@vishwanathan.dev> (https://vishwanathan.dev)",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "oui": "tsx scripts/build-oui.ts",
+    "dev": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web && npm run build -w packages/scanner",
+    "scan": "tsx packages/scanner/src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/core && tsc -p packages/scanner && tsc -p apps/web",
+    "lint": "eslint .",
+    "build:demo": "npm run build -w apps/web",
+    "test:e2e": "npm run build:demo && playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.5",
+    "oui-data": "2.1.60",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^3.2.7"
+  }
+}
