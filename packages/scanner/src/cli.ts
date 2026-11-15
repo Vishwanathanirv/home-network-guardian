@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -7,6 +8,16 @@ import { startLive } from "./live";
 import { defaultGateway, interfaces, pickNetwork, scanNetwork } from "./net";
 
 setOui(oui as OuiTable);
+
+/** Opens a link in the computer's default browser, so no one has to copy a URL. Best effort. */
+function openBrowser(url: string) {
+  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
+  } catch {
+    /* no browser to open; the printed link still works */
+  }
+}
 
 const HELP = `Lamplight: find every device on your home network and what's risky about it.
 
@@ -86,7 +97,7 @@ const describe = (ch: Change) => {
 };
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
-  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, help: { type: "boolean", short: "h" } } });
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, open: { type: "boolean" }, "no-open": { type: "boolean" }, help: { type: "boolean", short: "h" } } });
   const [cmd, ...files] = positionals;
   if (values.help || !cmd) {
     process.stdout.write(HELP);
@@ -116,6 +127,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       throw new Error(e.code === "EADDRINUSE" ? `Port ${port} is busy. Is live mode already running? Or pick another with --port.` : e.message);
     });
     process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nLive mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.\nThe first scan takes about a minute. Press Ctrl+C to stop.\n\n`);
+    const link = `${site}/?live=${port}&key=${live.key}`;
+    if (!values["no-open"]) {
+      process.stderr.write("Opening it in your browser…\n");
+      setTimeout(() => openBrowser(link), 500);
+    }
     await new Promise<void>((resolve) => process.once("SIGINT", resolve));
     live.stop();
     process.stdout.write("\nStopped.\n");

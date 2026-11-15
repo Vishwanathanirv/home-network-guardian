@@ -5,7 +5,13 @@ import { CopyButton } from "./device";
 import { addScan, removeScan, setActive, useActive, useScans } from "./lib";
 import { Section, SubHeader } from "./sheets";
 
-const RAW = "https://raw.githubusercontent.com/Vishwanathanirv/home-network-guardian/main/scanner/lamplight.cjs";
+const RAW_BASE = "https://raw.githubusercontent.com/Vishwanathanirv/home-network-guardian/main/scanner";
+const RAW = `${RAW_BASE}/lamplight.cjs`;
+const LAUNCHER: Record<Os, { file: string; name: string }> = {
+  windows: { file: "lamplight-windows.cmd", name: "Windows launcher" },
+  mac: { file: "lamplight-mac.command", name: "Mac launcher" },
+  linux: { file: "lamplight-mac.command", name: "launcher" },
+};
 export type Os = "windows" | "mac" | "linux";
 const OS_NAME: Record<Os, string> = { windows: "Windows", mac: "Mac", linux: "Linux" };
 
@@ -57,6 +63,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
   const active = useActive();
   const navigate = useNavigate();
   const [os, setOs] = useState<Os>(guessOs);
+  const [showCmd, setShowCmd] = useState(false);
   const [addr, setAddr] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +86,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
   return (
     <div>
       <SubHeader title="Scan your home" onClose={onClose}>
-        <p className="mt-1 text-[13.5px] leading-snug text-muted">A website can't see your home network, so the scan runs on a computer in your house. Copy these commands into a terminal, then open the result here. Nothing is uploaded.</p>
+        <p className="mt-1 text-[13.5px] leading-snug text-muted">A website can't see your home network, so a tiny program runs on a computer in your house. Nothing is uploaded; it only talks to this page on your own machine.</p>
       </SubHeader>
 
       <div className="mt-4 flex gap-1 rounded-full bg-panel-2 p-1" role="tablist" aria-label="Your computer">
@@ -90,6 +97,40 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
+      {/* The no-typing path: two downloads and a double-click. */}
+      <div className="mt-4 rounded-2xl border border-accent/40 bg-[color-mix(in_oklab,var(--accent)_7%,transparent)] p-4">
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-accent px-2 py-0.5 text-[11.5px] font-bold text-panel">Easiest</span>
+          <h3 className="font-bold">No typing — just double-click</h3>
+        </div>
+        <ol className="mt-2.5 space-y-2 text-[13.5px] text-muted">
+          <li>
+            <span className="font-semibold text-ink">1. Put both files in one folder</span> (your Downloads is fine):
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              <a className="btn primary" href={`${RAW_BASE}/${LAUNCHER[os].file}`} download={LAUNCHER[os].file}>
+                Download the {LAUNCHER[os].name}
+              </a>
+              <a className="btn" href={RAW} download="lamplight.cjs">
+                Download the scanner
+              </a>
+            </div>
+          </li>
+          <li>
+            <span className="font-semibold text-ink">2. Double-click the {OS_NAME[os] === "Linux" ? "launcher" : `${OS_NAME[os]} launcher`}.</span>{" "}
+            {os === "windows" ? 'Windows may warn about an unknown file; choose "More info", then "Run anyway".' : os === "mac" ? 'The first time, right-click it and choose "Open", then "Open" again (macOS guards downloaded files).' : "You may need to mark it executable (chmod +x) first."}
+          </li>
+          <li>
+            <span className="font-semibold text-ink">3. That's it.</span> It finds your network, scans, and opens this site by itself. Keep the little window open while you use it; close it to stop.
+          </li>
+        </ol>
+        <p className="mt-2.5 text-[12.5px] text-faint">It needs Node.js (free). If you don't have it, the launcher tells you and links to it, then you double-click again.</p>
+      </div>
+
+      <button className="mt-4 flex w-full items-center justify-between text-[13.5px] font-semibold" onClick={() => setShowCmd(!showCmd)} aria-expanded={showCmd}>
+        <span>Prefer to type commands yourself?</span>
+        <span className="text-faint">{showCmd ? "Hide" : "Show"}</span>
+      </button>
+      {showCmd && (
       <ol className="mt-4 space-y-4">
         <Step n={1} title={`Open a terminal`}>
           {os === "windows" ? (
@@ -136,6 +177,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
           It saves a file named like <code className="font-mono text-ink">lamplight-{new Date().toISOString().slice(0, 10)}.json</code>. Choose it below.
         </Step>
       </ol>
+      )}
 
       <Section title="Open a scan">
         <div className="flex flex-wrap gap-2">

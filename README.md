@@ -26,6 +26,7 @@ Many homes now have more than a dozen connected devices, and few people could na
 - **Shows the whole network.** The grade, the router, the weakest devices, what's on the network, who made it all and which services answer, plus a report you can download and keep.
 - **Keeps a to-do list.** Tick a problem off when you've fixed it: the device's badge on the plan updates and a progress bar shows how far you've got.
 - **Names devices by what they are.** Cheap smart bulbs and plugs all share one chip maker ("Espressif"), so instead of a wall of identical names Lamplight labels them by type and numbers them — "Smart home gadget 3" — and uses the real name when a device announces one ("Living Room TV"). Each device shows its model and, in a word, what it's busy doing (streaming, printing, sharing files).
+- **No command line needed.** Download two files and double-click a launcher: it finds your network, scans, and opens the site by itself. The terminal commands are still there for anyone who wants them.
 - **An atom view.** Switch the house plan for a living network graph: your router is the nucleus and every device orbits it on a shell grouped by kind, bonds drawn to the centre, risky ones glowing red. Hover any node for its name, model, address and what it's doing.
 - **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out. Ctrl K jumps to any device or action, and a table view lists every device side by side, sortable and downloadable as CSV.
 - **Notices change.** Compare two scans to see who joined, who left, and what started answering. The scanner exits with code 1 when a new device joins, so a nightly cron job can email you.
@@ -76,7 +77,7 @@ node lamplight.cjs live                            # keep watching, and see it l
 node lamplight.cjs demo                            # the example home, to try it without scanning
 ```
 
-Download it with `curl -L -o lamplight.cjs https://raw.githubusercontent.com/Vishwanathanirv/home-network-guardian/main/scanner/lamplight.cjs` (on Windows, `curl.exe`). The site's **Scan your home** panel lists every command for Windows, Mac and Linux, filled in with your network.
+The site's **Scan your home** panel has a no-typing path (download the launcher + the scanner, double-click the launcher) and, for anyone who prefers it, every terminal command filled in with your own network. The launcher just runs `lamplight live` for you and opens your browser.
 
 How it scans:
 

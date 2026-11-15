@@ -34,6 +34,7 @@ __export(cli_exports, {
   main: () => main
 });
 module.exports = __toCommonJS(cli_exports);
+var import_node_child_process2 = require("node:child_process");
 var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
 var import_node_util2 = require("node:util");
@@ -1366,6 +1367,14 @@ function startLive(o) {
 
 // src/cli.ts
 setOui(oui_default);
+function openBrowser(url) {
+  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try {
+    (0, import_node_child_process2.spawn)(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {
+    }).unref();
+  } catch {
+  }
+}
 var HELP = `Lamplight: find every device on your home network and what's risky about it.
 
 Usage:
@@ -1439,7 +1448,7 @@ var describe = (ch) => {
   return ch.type === "opened" ? `${c("33", "Newly open:")} ${names} on ${who}` : `Now closed: ${names} on ${who}`;
 };
 async function main(argv = process.argv.slice(2)) {
-  const { values, positionals } = (0, import_node_util2.parseArgs)({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, help: { type: "boolean", short: "h" } } });
+  const { values, positionals } = (0, import_node_util2.parseArgs)({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, open: { type: "boolean" }, "no-open": { type: "boolean" }, help: { type: "boolean", short: "h" } } });
   const [cmd, ...files] = positionals;
   if (values.help || !cmd) {
     process.stdout.write(HELP);
@@ -1483,6 +1492,11 @@ Live mode shows everything on the site as it happens; it does not save a file. F
 The first scan takes about a minute. Press Ctrl+C to stop.
 
 `);
+    const link = `${site}/?live=${port}&key=${live.key}`;
+    if (!values["no-open"]) {
+      process.stderr.write("Opening it in your browser\u2026\n");
+      setTimeout(() => openBrowser(link), 500);
+    }
     await new Promise((resolve2) => process.once("SIGINT", resolve2));
     live.stop();
     process.stdout.write("\nStopped.\n");

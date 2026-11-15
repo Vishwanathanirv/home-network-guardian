@@ -79,6 +79,10 @@ test("the network page grades the whole home, and the scan page has the commands
 
   await page.goto("/scans");
   await page.getByRole("tab", { name: "Windows" }).click();
+  // The no-typing path leads, with a double-click launcher to download.
+  await expect(details(page).getByRole("link", { name: /Download the Windows launcher/ })).toHaveAttribute("href", /lamplight-windows\.cmd$/);
+  // The terminal commands are still there for people who want them.
+  await page.getByRole("button", { name: /Prefer to type commands/ }).click();
   await page.getByLabel("Your computer's address").fill("10.101.250.38");
   await expect(details(page).getByText("node lamplight.cjs scan --network 10.101.250.0/24").first()).toBeVisible();
   await expect(details(page).getByText(/curl\.exe -L -o lamplight\.cjs/)).toBeVisible();
