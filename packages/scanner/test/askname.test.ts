@@ -52,3 +52,11 @@ test("asks a device directly which Bonjour services it offers, and reads its nam
   expect(got.get("127.0.0.1")?.name).toBe("Ravi's iPhone");
   expect(got.get("127.0.0.1")?.services).toContain("_companion-link._tcp");
 });
+
+test("asks over LLMNR too, the way Windows laptops answer", async () => {
+  const pc = dgram.createSocket({ type: "udp4", reuseAddr: true });
+  await new Promise<void>((ok) => pc.bind(5355, "127.0.0.1", () => ok()));
+  pc.on("message", (q, from) => pc.send(answer(q, "1.0.0.127.in-addr.arpa", "ANITHA-LAPTOP"), from.port, from.address));
+  expect(await askName("127.0.0.1", 900, 5355)).toBe("ANITHA-LAPTOP");
+  pc.close();
+});

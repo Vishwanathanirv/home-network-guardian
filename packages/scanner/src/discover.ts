@@ -361,7 +361,7 @@ export async function igd(location: string): Promise<{ externalIp?: string; mapp
  * multicast-DNS port. iPhones, iPads, Macs and many Linux boxes answer this with names like
  * "Ravis-iPhone.local" even when they don't announce any service. Returns undefined if it stays quiet.
  */
-export function askName(ip: string, timeout = 1200): Promise<string | undefined> {
+export function askName(ip: string, timeout = 1200, port = 5353): Promise<string | undefined> {
   const q = ip.split(".").reverse().join(".") + ".in-addr.arpa";
   const head = Buffer.alloc(12);
   head.writeUInt16BE(Math.floor(Math.random() * 0xffff), 0);
@@ -397,19 +397,35 @@ export function askName(ip: string, timeout = 1200): Promise<string | undefined>
         /* not a DNS answer we understand */
       }
     });
-    sock.send(packet, 5353, ip, (e) => e && finish());
+    sock.send(packet, port, ip, (e) => e && finish());
   });
 }
 
-/** Asks many devices for their names, a few dozen at a time. */
+/**
+ * Asks many devices for their names, a few dozen at a time, three ways at once: the Bonjour
+ * reverse lookup (iPhones, Macs, Linux), LLMNR on port 5355 (Windows laptops answer with their
+ * computer name), and the computer's own name lookup, which tries everything it knows.
+ */
 export async function askNames(ips: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (let i = 0; i < ips.length; i += 48) {
     const batch = ips.slice(i, i + 48);
-    const got = await Promise.all(batch.map((ip) => askName(ip)));
+    const got = await Promise.all(batch.map(async (ip) => (await askName(ip)) ?? (await askName(ip, 900, 5355)) ?? (await osName(ip))));
     batch.forEach((ip, k) => got[k] && out.set(ip, got[k]!));
   }
   return out;
+}
+
+/** The operating system's own reverse lookup, with a time limit; undefined if it only knows the address. */
+async function osName(ip: string): Promise<string | undefined> {
+  const { lookupService } = await import("node:dns/promises");
+  try {
+    const r = await Promise.race([lookupService(ip, 0), new Promise<undefined>((ok) => setTimeout(() => ok(undefined), 1500))]);
+    const host = r?.hostname;
+    return host && host !== ip && !/^\d+(\.\d+){3}$/.test(host) ? host : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -941,7 +941,7 @@ async function igd(location) {
   }
   return { externalIp, mappings };
 }
-function askName(ip, timeout = 1200) {
+function askName(ip, timeout = 1200, port = 5353) {
   const q = ip.split(".").reverse().join(".") + ".in-addr.arpa";
   const head = Buffer.alloc(12);
   head.writeUInt16BE(Math.floor(Math.random() * 65535), 0);
@@ -975,17 +975,27 @@ function askName(ip, timeout = 1200) {
       } catch {
       }
     });
-    sock.send(packet, 5353, ip, (e) => e && finish());
+    sock.send(packet, port, ip, (e) => e && finish());
   });
 }
 async function askNames(ips) {
   const out = /* @__PURE__ */ new Map();
   for (let i = 0; i < ips.length; i += 48) {
     const batch = ips.slice(i, i + 48);
-    const got = await Promise.all(batch.map((ip) => askName(ip)));
+    const got = await Promise.all(batch.map(async (ip) => await askName(ip) ?? await askName(ip, 900, 5355) ?? await osName(ip)));
     batch.forEach((ip, k) => got[k] && out.set(ip, got[k]));
   }
   return out;
+}
+async function osName(ip) {
+  const { lookupService } = await import("node:dns/promises");
+  try {
+    const r = await Promise.race([lookupService(ip, 0), new Promise((ok) => setTimeout(() => ok(void 0), 1500))]);
+    const host = r?.hostname;
+    return host && host !== ip && !/^\d+(\.\d+){3}$/.test(host) ? host : void 0;
+  } catch {
+    return void 0;
+  }
 }
 function mdnsDirect(ips, wait = 2500) {
   return new Promise((resolve2) => {
