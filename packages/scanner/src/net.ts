@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import { promisify } from "node:util";
 import { isPrivate, ipNum, parseArp, type Details, type Device, type Port, type Scan } from "@lamplight/core";
-import { askNames, certificate, igd, mdns, netbios, readPage, upnpDescription } from "./discover";
+import { askNames, certificate, igd, mdns, mdnsDirect, mergeMdns, netbios, readPage, upnpDescription } from "./discover";
 import { health } from "./health";
 
 const run = promisify(execFile);
@@ -255,9 +255,10 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   const [arp, gateway, announced, bonj] = await Promise.all([arpTable(), defaultGateway(), upnp, bonjour]);
   const macs = new Map(arp.filter((a) => inRange.has(a.ip)).map((a) => [a.ip, a]));
   const ips = [...new Set([...alive.keys(), ...macs.keys(), ...[...announced.hints.keys(), ...bonj.keys()].filter((ip) => inRange.has(ip))])];
-  const [names, own, descs, certs] = await Promise.all([
+  const [names, own, direct, descs, certs] = await Promise.all([
     netbios(ips),
     askNames(ips),
+    mdnsDirect(ips),
     Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, urls]) => [ip, await upnpDescription(urls[0])] as const)),
     Promise.all(ips.flatMap((ip) => (alive.get(ip) ?? []).filter((p) => TLS_PORTS.has(p.port)).map(async (p) => [ip, await certificate(ip, p.port)] as const))),
   ]);
@@ -266,7 +267,7 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
       const hints = announced.hints.get(ip);
       const ports = (alive.get(ip) ?? []).sort((a, b) => a.port - b.port);
       if (hints?.some((h) => /InternetGatewayDevice|WANIPConnection/i.test(h))) ports.push({ port: 1900, proto: "udp", service: "upnp", banner: "Answers UPnP internet-gateway requests" });
-      const b = bonj.get(ip);
+      const b = mergeMdns(bonj.get(ip), direct.get(ip));
       const u = descs.find(([x]) => x === ip)?.[1];
       const details: Details = {
         name: b?.name ?? u?.name ?? names.get(ip)?.name,

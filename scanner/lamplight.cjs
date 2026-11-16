@@ -987,6 +987,47 @@ async function askNames(ips) {
   }
   return out;
 }
+function mdnsDirect(ips, wait = 2500) {
+  return new Promise((resolve2) => {
+    const records = /* @__PURE__ */ new Map();
+    const sock = import_node_dgram.default.createSocket("udp4");
+    const finish = () => {
+      try {
+        sock.close();
+      } catch {
+      }
+      resolve2(new Map([...records].map(([ip, rs]) => [ip, readMdns(rs)])));
+    };
+    sock.on("message", (m, r) => {
+      try {
+        records.set(r.address, [...records.get(r.address) ?? [], ...parseDns(m)]);
+      } catch {
+      }
+    });
+    sock.on("error", finish);
+    sock.bind(0, () => {
+      const half = Math.ceil(MDNS_SERVICES.length / 2);
+      const a = mdnsQuery(MDNS_SERVICES.slice(0, half), 19537);
+      const b = mdnsQuery(MDNS_SERVICES.slice(half), 19538);
+      const send = () => {
+        for (const ip of ips) {
+          sock.send(a, 5353, ip, () => {
+          });
+          sock.send(b, 5353, ip, () => {
+          });
+        }
+      };
+      send();
+      setTimeout(send, 800);
+      setTimeout(finish, wait);
+    });
+  });
+}
+function mergeMdns(x, y) {
+  if (!x) return y;
+  if (!y) return x;
+  return { services: [.../* @__PURE__ */ new Set([...x.services, ...y.services])], name: x.name ?? y.name, model: x.model ?? y.model, host: x.host ?? y.host };
+}
 
 // src/net.ts
 var run = (0, import_node_util.promisify)(import_node_child_process.execFile);
@@ -1189,9 +1230,10 @@ async function scanNetwork(o) {
   const [arp, gateway, announced, bonj] = await Promise.all([arpTable(), defaultGateway(), upnp, bonjour]);
   const macs = new Map(arp.filter((a) => inRange.has(a.ip)).map((a) => [a.ip, a]));
   const ips = [.../* @__PURE__ */ new Set([...alive.keys(), ...macs.keys(), ...[...announced.hints.keys(), ...bonj.keys()].filter((ip) => inRange.has(ip))])];
-  const [names, own, descs, certs] = await Promise.all([
+  const [names, own, direct, descs, certs] = await Promise.all([
     netbios(ips),
     askNames(ips),
+    mdnsDirect(ips),
     Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, urls]) => [ip, await upnpDescription(urls[0])])),
     Promise.all(ips.flatMap((ip) => (alive.get(ip) ?? []).filter((p) => TLS_PORTS.has(p.port)).map(async (p) => [ip, await certificate(ip, p.port)])))
   ]);
@@ -1200,7 +1242,7 @@ async function scanNetwork(o) {
       const hints = announced.hints.get(ip);
       const ports2 = (alive.get(ip) ?? []).sort((a, b2) => a.port - b2.port);
       if (hints?.some((h) => /InternetGatewayDevice|WANIPConnection/i.test(h))) ports2.push({ port: 1900, proto: "udp", service: "upnp", banner: "Answers UPnP internet-gateway requests" });
-      const b = bonj.get(ip);
+      const b = mergeMdns(bonj.get(ip), direct.get(ip));
       const u = descs.find(([x]) => x === ip)?.[1];
       const details = {
         name: b?.name ?? u?.name ?? names.get(ip)?.name,
@@ -1477,6 +1519,26 @@ function startLive(o) {
 }
 
 // src/cli.ts
+function publicNetworkWarning() {
+  if (process.platform !== "win32") return Promise.resolve("");
+  return new Promise((done) => {
+    const ps = (0, import_node_child_process2.spawn)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "(Get-NetConnectionProfile | Select-Object -ExpandProperty NetworkCategory) -join ','"], { windowsHide: true });
+    let out = "";
+    const t = setTimeout(() => (ps.kill(), done("")), 4e3);
+    ps.stdout.on("data", (b) => out += b);
+    ps.on("error", () => (clearTimeout(t), done("")));
+    ps.on("close", () => {
+      clearTimeout(t);
+      done(
+        /Public/i.test(out) ? `${c("33", "Windows has this Wi-Fi set to Public,")} which blocks most devices from telling us their names.
+To fix it: Settings > Network & internet > Wi-Fi > click your network > choose "Private network". Then run this again.
+(Only do this on a network you trust, like your home or PG Wi-Fi.)
+
+` : ""
+      );
+    });
+  });
+}
 setOui(oui_default);
 function openBrowser(url) {
   const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
@@ -1587,6 +1649,7 @@ A scan would use ${pick.cidr}. To pick another: lamplight scan --network <networ
     const every = Math.max(2, Number(values.every ?? 10));
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("--port must be a number from 1024 to 65535.");
     const site = (values.site ?? "https://home-network-guardian.vercel.app").replace(/\/$/, "");
+    process.stdout.write(await publicNetworkWarning());
     const live = startLive({ cidr, self: values.network ? list.find((i) => i.cidr === values.network)?.address : local?.address, port, every, log: (l) => process.stdout.write(`${l}
 `) });
     await live.ready.catch((e) => {
@@ -1642,7 +1705,8 @@ Devices there sit behind another router, so they can't tell us their names. For 
 
 `));
     }
-    process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes about a minute\u2026
+    process.stderr.write(await publicNetworkWarning());
+    process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes under a minute\u2026
 `);
     const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r\x1B[2K${Math.round(d / t * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1B[2K${t}`) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;

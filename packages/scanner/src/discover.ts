@@ -411,3 +411,52 @@ export async function askNames(ips: string[]): Promise<Map<string, string>> {
   }
   return out;
 }
+
+/**
+ * Asks each device directly which Bonjour services it offers, instead of asking the whole network.
+ * A firewall (Windows on a "Public" network especially) drops the group answers to a network-wide
+ * question, but always lets through a reply from the very device we just asked.
+ */
+export function mdnsDirect(ips: string[], wait = 2500): Promise<Map<string, MdnsInfo>> {
+  return new Promise((resolve) => {
+    const records = new Map<string, Rr[]>();
+    const sock = dgram.createSocket("udp4");
+    const finish = () => {
+      try {
+        sock.close();
+      } catch {
+        /* already closed */
+      }
+      resolve(new Map([...records].map(([ip, rs]) => [ip, readMdns(rs)])));
+    };
+    sock.on("message", (m, r) => {
+      try {
+        records.set(r.address, [...(records.get(r.address) ?? []), ...parseDns(m)]);
+      } catch {
+        /* a malformed packet: ignore it */
+      }
+    });
+    sock.on("error", finish);
+    sock.bind(0, () => {
+      const half = Math.ceil(MDNS_SERVICES.length / 2);
+      const a = mdnsQuery(MDNS_SERVICES.slice(0, half), 0x4c51);
+      const b = mdnsQuery(MDNS_SERVICES.slice(half), 0x4c52);
+      const send = () => {
+        for (const ip of ips) {
+          sock.send(a, 5353, ip, () => {});
+          sock.send(b, 5353, ip, () => {});
+        }
+      };
+      send();
+      setTimeout(send, 800);
+      setTimeout(finish, wait);
+    });
+  });
+}
+
+/** Puts together what a device said to the whole network and what it said to us directly. */
+export function mergeMdns(x?: MdnsInfo, y?: MdnsInfo): MdnsInfo | undefined {
+  if (!x) return y;
+  if (!y) return x;
+  return { services: [...new Set([...x.services, ...y.services])], name: x.name ?? y.name, model: x.model ?? y.model, host: x.host ?? y.host };
+}

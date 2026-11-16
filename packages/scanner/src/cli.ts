@@ -7,6 +7,29 @@ import oui from "../../core/data/oui.json";
 import { startLive } from "./live";
 import { defaultGateway, interfaces, pickNetwork, scanNetwork } from "./net";
 
+/**
+ * Windows marks a new Wi-Fi as "Public" and then drops the replies devices send back, so names go
+ * missing. Returns a warning to print if this computer's network is set to Public, else "".
+ */
+function publicNetworkWarning(): Promise<string> {
+  if (process.platform !== "win32") return Promise.resolve("");
+  return new Promise((done) => {
+    const ps = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "(Get-NetConnectionProfile | Select-Object -ExpandProperty NetworkCategory) -join ','"], { windowsHide: true });
+    let out = "";
+    const t = setTimeout(() => (ps.kill(), done("")), 4000);
+    ps.stdout.on("data", (b) => (out += b));
+    ps.on("error", () => (clearTimeout(t), done("")));
+    ps.on("close", () => {
+      clearTimeout(t);
+      done(
+        /Public/i.test(out)
+          ? `${c("33", "Windows has this Wi-Fi set to Public,")} which blocks most devices from telling us their names.\nTo fix it: Settings > Network & internet > Wi-Fi > click your network > choose "Private network". Then run this again.\n(Only do this on a network you trust, like your home or PG Wi-Fi.)\n\n`
+          : "",
+      );
+    });
+  });
+}
+
 setOui(oui as OuiTable);
 
 /** Opens a link in the computer's default browser, so no one has to copy a URL. Best effort. */
@@ -122,6 +145,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     const every = Math.max(2, Number(values.every ?? 10));
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("--port must be a number from 1024 to 65535.");
     const site = (values.site ?? "https://home-network-guardian.vercel.app").replace(/\/$/, "");
+    process.stdout.write(await publicNetworkWarning());
     const live = startLive({ cidr, self: values.network ? list.find((i) => i.cidr === values.network)?.address : local?.address, port, every, log: (l) => process.stdout.write(`${l}\n`) });
     await live.ready.catch((e: NodeJS.ErrnoException) => {
       throw new Error(e.code === "EADDRINUSE" ? `Port ${port} is busy. Is live mode already running? Or pick another with --port.` : e.message);
@@ -159,7 +183,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (values.network && !self) {
       process.stderr.write(c("33", `Heads up: ${cidr} isn't a network this computer is joined to${local ? ` (yours is ${local.cidr})` : ""}.\nDevices there sit behind another router, so they can't tell us their names. For real names, run "node lamplight.cjs scan" with no --network.\n\n`));
     }
-    process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes about a minute…\n`);
+    process.stderr.write(await publicNetworkWarning());
+    process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes under a minute…\n`);
     const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r\x1b[2K${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1b[2K${t}`) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     writeFileSync(out, JSON.stringify(scan, null, 2));
