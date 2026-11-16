@@ -126,7 +126,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     await live.ready.catch((e: NodeJS.ErrnoException) => {
       throw new Error(e.code === "EADDRINUSE" ? `Port ${port} is busy. Is live mode already running? Or pick another with --port.` : e.message);
     });
-    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nLive mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.\nThe first scan takes about a minute. Press Ctrl+C to stop.\n\n`);
+    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nLive mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.\nThe first scan takes about a minute. Press Ctrl+C to stop.\n${process.platform === "win32" ? `${c("33", "Don't click inside this window:")} Windows pauses the scanner while text is selected (the title starts with "Select"). If that happens, press Esc.\nKeep the laptop awake too; it can't watch while it sleeps.\n` : ""}\n`);
     const link = `${site}/?live=${port}&key=${live.key}`;
     if (!values["no-open"]) {
       process.stderr.write("Opening it in your browser…\n");

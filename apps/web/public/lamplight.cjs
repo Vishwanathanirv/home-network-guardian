@@ -1287,6 +1287,7 @@ function startLive(o) {
     Object.assign(p, { ip, mac: mac ?? p.mac, lastSeen: t, misses: 0, online: true, ...wasOff ? { since: t } : {} });
     return wasOff ? "back" : "same";
   };
+  const unnamed = /* @__PURE__ */ new Set();
   let full = null;
   let pending = null;
   async function fullScan(reason) {
@@ -1305,7 +1306,14 @@ function startLive(o) {
         for (const d of scan.devices) if (seen(d.ip, d.mac) === "new" && before) emit({ type: "joined", ip: d.ip, mac: d.mac, name: nameOf(d) });
         const away = (before?.devices ?? []).filter((d) => !scan.devices.some((x) => keyOf(x) === keyOf(d)));
         state.scan = { ...scan, devices: [...scan.devices, ...away].sort((a, b) => ipNum(a.ip) - ipNum(b.ip)) };
-        emit({ type: "scan", ip: o.cidr, detail: `${scan.devices.length} devices` });
+        for (const ip of [...unnamed]) {
+          const d = scan.devices.find((x) => x.ip === ip);
+          if (!d) continue;
+          unnamed.delete(ip);
+          const n = nameOf(d);
+          if (n) log(`${(/* @__PURE__ */ new Date()).toLocaleTimeString()}  named   ${ip.padEnd(16)} ${n}`);
+        }
+        emit({ type: "scan", ip: o.cidr, detail: `${scan.devices.length} devices, ${scan.devices.filter((d) => nameOf(d)).length} with names` });
       } catch (e) {
         log(`Scan failed: ${e.message}`);
       } finally {
@@ -1336,6 +1344,7 @@ function startLive(o) {
       const r = seen(ip, arp.get(ip) ?? known?.mac);
       if (r === "new") {
         unknown = true;
+        if (!nameOf(known)) unnamed.add(ip);
         emit({ type: "joined", ip, mac: arp.get(ip), name: nameOf(known) });
       } else if (r === "back") emit({ type: "back", ip, mac: arp.get(ip) ?? known?.mac, name: nameOf(known) });
     }
@@ -1559,7 +1568,9 @@ Open this link to see it live (keep it private, it has your key):
 
 Live mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.
 The first scan takes about a minute. Press Ctrl+C to stop.
-
+${process.platform === "win32" ? `${c("33", "Don't click inside this window:")} Windows pauses the scanner while text is selected (the title starts with "Select"). If that happens, press Esc.
+Keep the laptop awake too; it can't watch while it sleeps.
+` : ""}
 `);
     const link = `${site}/?live=${port}&key=${live.key}`;
     if (!values["no-open"]) {

@@ -96,6 +96,8 @@ export function startLive(o: LiveOptions) {
     return wasOff ? ("back" as const) : ("same" as const);
   };
 
+  // Devices that joined before we knew their name; the next full scan names them in the window.
+  const unnamed = new Set<string>();
   let full: Promise<void> | null = null;
   let pending: NodeJS.Timeout | null = null;
   async function fullScan(reason: string) {
@@ -115,7 +117,15 @@ export function startLive(o: LiveOptions) {
         // Keep devices that are away in the list, so the plan doesn't forget them.
         const away = (before?.devices ?? []).filter((d) => !scan.devices.some((x) => keyOf(x) === keyOf(d)));
         state.scan = { ...scan, devices: [...scan.devices, ...away].sort((a, b) => ipNum(a.ip) - ipNum(b.ip)) };
-        emit({ type: "scan", ip: o.cidr, detail: `${scan.devices.length} devices` });
+        for (const ip of [...unnamed]) {
+          const d = scan.devices.find((x) => x.ip === ip);
+          if (!d) continue;
+          unnamed.delete(ip);
+          const n = nameOf(d);
+          if (n) log(`${new Date().toLocaleTimeString()}  named   ${ip.padEnd(16)} ${n}`);
+        }
+        // A quiet stretch is fine; this line shows it's still watching.
+        emit({ type: "scan", ip: o.cidr, detail: `${scan.devices.length} devices, ${scan.devices.filter((d) => nameOf(d)).length} with names` });
       } catch (e) {
         log(`Scan failed: ${(e as Error).message}`);
       } finally {
@@ -148,6 +158,7 @@ export function startLive(o: LiveOptions) {
       const r = seen(ip, arp.get(ip) ?? known?.mac);
       if (r === "new") {
         unknown = true;
+        if (!nameOf(known)) unnamed.add(ip);
         emit({ type: "joined", ip, mac: arp.get(ip), name: nameOf(known) });
       } else if (r === "back") emit({ type: "back", ip, mac: arp.get(ip) ?? known?.mac, name: nameOf(known) });
     }
