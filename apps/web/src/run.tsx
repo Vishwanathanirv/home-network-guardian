@@ -193,11 +193,18 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
             <Cmd os={os}>{`${os === "windows" ? "curl.exe" : "curl"} -L -o lamplight.cjs ${RAW}`}</Cmd>
           </li>
           <li>
-            <span className="font-semibold text-ink">3. Start it.</span> It finds your own network, scans it, and opens this site with your devices, updating live.
+            <span className="font-semibold text-ink">3. Start it.</span> It finds your own network, scans it, and opens Lamplight in your browser, served from your own computer, updating live.
             <Cmd os={os}>node lamplight.cjs live</Cmd>
             <span className="mt-1 block text-[12.5px] text-faint">Want a file to keep instead? Use <code className="font-mono">node lamplight.cjs scan</code> and open the file below.</span>
           </li>
         </ol>
+        <p className="mt-3 border-t border-line pt-2.5 text-[12.5px] leading-relaxed text-faint">
+          Be careful pasting commands from any website. This one downloads a single open-source file from GitHub that you can{" "}
+          <a className="font-semibold text-accent" href="https://github.com/Vishwanathanirv/home-network-guardian/blob/main/packages/scanner/src" target="_blank" rel="noreferrer">
+            read first
+          </a>
+          , and runs it with Node. It never asks for a password, only talks to devices on your Wi-Fi, and sends none of your data anywhere.
+        </p>
       </div>
 
       {/* Another way: a launcher file. Some Windows setups (Smart App Control) block it. */}
@@ -278,7 +285,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
           </p>
         </Step>
         <Step n={4} title="Scan">
-          About a minute. It finds each device, asks it its name and model, reads its web page and certificate, and checks the services it answers on. It never logs in to anything.
+          Usually under a minute. It finds each device, asks its name and model, reads its web page and certificate, and checks the services it answers on. It never uses or guesses a password.
           <Cmd os={os}>{cidr ? `node lamplight.cjs scan --network ${cidr}` : "node lamplight.cjs scan"}</Cmd>
           {!cidr && <p className="mt-1.5 text-[12.5px]">It picks your own network by itself. Only add --network if you typed your address above.</p>}
           {os === "windows" && <p className="mt-1.5 text-[12.5px]">If Windows asks about the firewall for Node.js, click Allow, so devices can answer.</p>}

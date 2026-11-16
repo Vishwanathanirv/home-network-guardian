@@ -26,7 +26,7 @@ export function useTick(ms = 5000) {
   return t;
 }
 
-export const TONE: Record<LiveEvent["type"], string> = { joined: "var(--accent)", back: "var(--ok)", away: "var(--faint)", left: "var(--faint)", opened: "var(--warn)", closed: "var(--muted)", moved: "var(--muted)", scan: "var(--line)" };
+export const TONE: Record<LiveEvent["type"], string> = { joined: "var(--accent)", back: "var(--ok)", away: "var(--faint)", left: "var(--faint)", opened: "var(--warn)", closed: "var(--muted)", moved: "var(--muted)", scan: "var(--line)", lag: "var(--warn)" };
 
 export const eventDetail = (e: LiveEvent) =>
   e.type === "opened" || e.type === "closed"
@@ -35,7 +35,9 @@ export const eventDetail = (e: LiveEvent) =>
         .filter(Boolean)
         .map((p) => serviceName({ port: Number(p), proto: "tcp" }))
         .join(", ")
-    : e.detail;
+    : e.type === "lag"
+      ? e.detail?.replace(/right after this (joined|came back)$/, "right after this device $1")
+      : e.detail;
 
 /** A small chart of how fast the router and the internet answer, over the last half hour or so. */
 function Pulse({ points }: { points: { at: string; routerMs?: number; internetMs?: number }[] }) {
@@ -215,7 +217,22 @@ export function LiveSheet({ onClose, onPick }: { onClose: () => void; onPick: (i
                     <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: TONE[e.type] }} aria-hidden />
                     <div className="min-w-0 flex-1 text-[13.5px]">
                       <span className="font-semibold">{EVENT_TEXT[e.type]}</span>
-                      {e.type !== "scan" && (
+                      {e.type === "lag" && (
+                        <>
+                          {" "}
+                          {e.detail?.replace(/, right after this (joined|came back)$/, "")}
+                          {d && /right after/.test(e.detail ?? "") && (
+                            <>
+                              , right after{" "}
+                              <button className="font-semibold text-accent" onClick={() => onPick(d.ip)}>
+                                {displayName(d, places[keyOf(d)])}
+                              </button>{" "}
+                              {/came back$/.test(e.detail ?? "") ? "came back" : "joined"}
+                            </>
+                          )}
+                        </>
+                      )}
+                      {e.type !== "scan" && e.type !== "lag" && (
                         <>
                           {eventDetail(e) ? ` ${eventDetail(e)}` : ""}:{" "}
                           {d ? (

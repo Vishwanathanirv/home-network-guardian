@@ -4,7 +4,12 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_TONIGHT, KIND_NAME, parseAny, parseNmap, serviceName, setOui, withDetails, type Change, type OuiTable, type Report } from "@lamplight/core";
 import oui from "../../core/data/oui.json";
+import { UI } from "lamplight:ui";
 import { startLive } from "./live";
+import { siteFiles } from "./ui";
+
+/** The website, built into this file, so live mode needs nothing from the internet. */
+const SITE = siteFiles(UI);
 import { defaultGateway, interfaces, pickNetwork, scanNetwork } from "./net";
 
 /**
@@ -69,9 +74,10 @@ Options:
   --network <cidr>   Network to scan (default: this computer's /24)
   --out <file>       Where to save the scan (default: lamplight-<date>.json)
   --ports <list>     Comma-separated ports instead of the default 39
+  --gentle           Scan slowly, for small or fussy routers and mesh Wi-Fi
   --every <minutes>  Live mode: minutes between full scans (default 10)
   --port <n>         Live mode: local port for the site to read from (default 47114)
-  --site <url>       Live mode: the Lamplight site to link to
+  --site <url>       Live mode: use a hosted copy of the app instead of the one built in
   --json             Print reports as JSON
   -h, --help         Show this help
 
@@ -120,7 +126,7 @@ const describe = (ch: Change) => {
 };
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
-  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, open: { type: "boolean" }, "no-open": { type: "boolean" }, help: { type: "boolean", short: "h" } } });
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { network: { type: "string" }, out: { type: "string" }, ports: { type: "string" }, json: { type: "boolean" }, every: { type: "string" }, port: { type: "string" }, site: { type: "string" }, open: { type: "boolean" }, "no-open": { type: "boolean" }, gentle: { type: "boolean" }, help: { type: "boolean", short: "h" } } });
   const [cmd, ...files] = positionals;
   if (values.help || !cmd) {
     process.stdout.write(HELP);
@@ -144,13 +150,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     const port = Number(values.port ?? 47114);
     const every = Math.max(2, Number(values.every ?? 10));
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("--port must be a number from 1024 to 65535.");
-    const site = (values.site ?? "https://home-network-guardian.vercel.app").replace(/\/$/, "");
+    // By default the app is served from this computer. --site points at the hosted copy instead.
+    const site = (values.site ?? (SITE.has("index.html") ? `http://127.0.0.1:${port}` : "https://home-network-guardian.vercel.app")).replace(/\/$/, "");
     process.stdout.write(await publicNetworkWarning());
-    const live = startLive({ cidr, self: values.network ? list.find((i) => i.cidr === values.network)?.address : local?.address, port, every, log: (l) => process.stdout.write(`${l}\n`) });
+    const live = startLive({ cidr, self: values.network ? list.find((i) => i.cidr === values.network)?.address : local?.address, port, every, log: (l) => process.stdout.write(`${l}\n`), site: SITE, gentle: values.gentle });
     await live.ready.catch((e: NodeJS.ErrnoException) => {
       throw new Error(e.code === "EADDRINUSE" ? `Port ${port} is busy. Is live mode already running? Or pick another with --port.` : e.message);
     });
-    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key):\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nLive mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.\nThe first scan takes about a minute. Press Ctrl+C to stop.\n${process.platform === "win32" ? `${c("33", "Don't click inside this window:")} Windows pauses the scanner while text is selected (the title starts with "Select"). If that happens, press Esc.\nKeep the laptop awake too; it can't watch while it sleeps.\n` : ""}\n`);
+    process.stdout.write(`\n${c("1", "Lamplight is watching")} ${cidr}. Full scan every ${every} minutes, a quick check every 15 seconds.\n\nOpen this link to see it live (keep it private, it has your key)${site.startsWith("http://127.0.0.1") ? ". The app runs on this computer and none of your data leaves it" : ""}:\n\n  ${c("36", `${site}/?live=${port}&key=${live.key}`)}\n\nLive mode shows everything on the site as it happens; it does not save a file. For a file to open later, use "${c("1", "node lamplight.cjs scan")}" instead.\nPress Ctrl+C to stop.\n${process.platform === "win32" ? `${c("33", "Don't click inside this window:")} Windows pauses the scanner while text is selected (the title starts with "Select"). If that happens, press Esc.\nKeep the laptop awake too; it can't watch while it sleeps.\n` : ""}\n`);
     const link = `${site}/?live=${port}&key=${live.key}`;
     if (!values["no-open"]) {
       process.stderr.write("Opening it in your browser…\n");
@@ -185,7 +192,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     }
     process.stderr.write(await publicNetworkWarning());
     process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes under a minute…\n`);
-    const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r\x1b[2K${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1b[2K${t}`) });
+    const scan = await scanNetwork({ cidr, self, ports, gentle: values.gentle, onProgress: (d, t) => process.stderr.write(`\r\x1b[2K${Math.round((d / t) * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1b[2K${t}`) });
     const out = values.out ?? `lamplight-${scan.at.slice(0, 10)}.json`;
     writeFileSync(out, JSON.stringify(scan, null, 2));
     const full = resolve(out);

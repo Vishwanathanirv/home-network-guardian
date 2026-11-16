@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "bin": { "lamplight": "dist/lamplight.cjs" },
-  "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/lamplight.cjs --alias:@lamplight/core=../core/src/index.ts --banner:js=\"#!/usr/bin/env node\" && mkdir -p ../../scanner && cp dist/lamplight.cjs ../../scanner/lamplight.cjs && cp ../../scanner/lamplight.cjs ../../scanner/lamplight-windows.cmd ../../scanner/lamplight-mac.command ../../apps/web/public/ 2>/dev/null || cp dist/lamplight.cjs ../../apps/web/public/lamplight.cjs"
+  "bin": {
+    "lamplight": "dist/lamplight.cjs"
   },
-  "dependencies": { "@lamplight/core": "*" }
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@lamplight/core": "*"
+  }
 }

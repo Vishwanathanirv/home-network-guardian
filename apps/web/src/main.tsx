@@ -281,7 +281,7 @@ function App() {
               <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: TONE[e.type] }} aria-hidden />
               <span className="min-w-0 flex-1 text-[13.5px]">
                 <span className="font-semibold">{EVENT_TEXT[e.type]}{eventDetail(e) ? ` ${eventDetail(e)}` : ""}</span>
-                <span className="block truncate text-muted">{e.name ?? "Unknown device"}, {e.ip}</span>
+                <span className="block truncate text-muted">{e.type === "lag" && !/right after/.test(e.detail ?? "") ? "No device joined just before, so it may be your internet provider" : `${e.name ?? "Unknown device"}, ${e.ip}`}</span>
               </span>
             </Toast>
           ))}

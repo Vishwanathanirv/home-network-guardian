@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import { isPrivate, ipNum, parseArp, type Details, type Device, type Port, type Scan } from "@lamplight/core";
 import { askNames, certificate, igd, mdns, mdnsDirect, mergeMdns, netbios, readPage, upnpDescription } from "./discover";
 import { health } from "./health";
+import { activeChecks } from "./probes";
+import { wifiNow } from "./wifi";
 
 const run = promisify(execFile);
 
@@ -202,7 +204,10 @@ async function reverse(ip: string): Promise<string | undefined> {
   }
 }
 
-export type ScanOptions = { cidr: string; self?: string; ports?: number[]; timeout?: number; concurrency?: number; onProgress?: (done: number, total: number) => void; onStep?: (text: string) => void };
+/** How many connections at once. Gentle mode is for small or fussy routers and mesh systems. */
+export const PACE = { normal: { knock: 256, depth: 160 }, gentle: { knock: 48, depth: 32 } };
+
+export type ScanOptions = { cidr: string; self?: string; ports?: number[]; timeout?: number; concurrency?: number; gentle?: boolean; onProgress?: (done: number, total: number) => void; onStep?: (text: string) => void };
 
 const TLS_PORTS = new Set([443, 1443, 5001, 8443]);
 /** Ports almost every device answers or refuses quickly: enough to tell an address is in use. */
@@ -227,7 +232,7 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
     const here = new Set<string>();
     await pool(
       hosts.flatMap((ip) => KNOCK.map((port) => ({ ip, port }))),
-      512,
+      PACE[o.gentle ? "gentle" : "normal"].knock,
       async ({ ip, port }) => {
         if (here.has(ip)) return;
         if ((await probe(ip, port, 500, "none")).state !== "silent") here.add(ip);
@@ -239,7 +244,7 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   }
   const jobs = targets.flatMap((ip) => ports.map((port) => ({ ip, port })));
   let done = 0;
-  await pool(jobs, o.concurrency ?? 256, async ({ ip, port }) => {
+  await pool(jobs, o.concurrency ?? PACE[o.gentle ? "gentle" : "normal"].depth, async ({ ip, port }) => {
     const r = await probe(ip, port, o.timeout);
     if (r.state !== "silent") {
       const list = alive.get(ip) ?? [];
@@ -278,6 +283,7 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
         web: web.get(ip),
         tls: certs.filter(([x, c]) => x === ip && c).map(([, c]) => c!),
         rtt: rtt.get(ip),
+        probes: await activeChecks(ip, ports.filter((p) => p.proto === "tcp").map((p) => p.port)),
       };
       for (const k of Object.keys(details) as (keyof Details)[]) if (details[k] === undefined || (Array.isArray(details[k]) && !(details[k] as unknown[]).length)) delete details[k];
       // Prefer the name the device gives itself, then what the router knows, then what it announced.
@@ -287,7 +293,8 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   );
   devices.sort((a, b) => ipNum(a.ip) - ipNum(b.ip));
   o.onStep?.("Checking the router and the internet connection…");
-  const internet = await internetCheck(gateway, announced.locations, devices.find((d) => d.ip === gateway));
+  const [checked, wifi] = await Promise.all([internetCheck(gateway, announced.locations, devices.find((d) => d.ip === gateway)), wifiNow()]);
+  const internet = { ...checked, ...(wifi ? { wifi } : {}) };
   return { at: new Date().toISOString(), source: "lamplight", network: o.cidr, gateway, devices, internet };
 }
 

@@ -121,7 +121,7 @@ export function checkDevice(d: Device, gateway?: string): DeviceReport {
 
   for (const p of d.ports) {
     const bad = knownBad(p);
-    if (bad) add({ id: "outdated", severity: bad.severity, title: bad.title, why: bad.why, cve: bad.cve, steps: [UPDATE, kind === "router" ? "If the maker no longer offers updates, replace the router. Internet providers often send a new one for free if you ask." : kind === "computer" ? "Install the system updates (on Linux: sudo apt update && sudo apt upgrade)." : "If no update exists, unplug it from the network until you can replace it."], port: p.port });
+    if (bad) add({ id: "outdated", severity: bad.severity, title: bad.title, why: `${bad.why} This is based on the version number it reports. Some makers fix a flaw without changing that number, so an update is the way to be sure.`, cve: bad.cve, basis: "version", steps: [UPDATE, kind === "router" ? "If the maker no longer offers updates, replace the router. Internet providers often send a new one for free if you ask." : kind === "computer" ? "Install the system updates (on Linux: sudo apt update && sudo apt upgrade)." : "If no update exists, unplug it from the network until you can replace it."], port: p.port });
   }
 
   const telnet = has(23) ?? has(2323);
@@ -145,8 +145,11 @@ export function checkDevice(d: Device, gateway?: string): DeviceReport {
       steps: ["On the device, open Settings, then Developer options, and turn off \"ADB debugging\" or \"Network debugging\".", "If there's no Developer options menu, check for a firmware update or a factory reset from the maker."],
     });
 
+  const probes = d.details?.probes;
   const ftp = has(21);
-  if (ftp && !issues.some((i) => i.port === 21))
+  if (ftp && probes?.ftpAnon)
+    add({ id: "ftp-anon", basis: "checked", severity: "critical", port: 21, title: "Anyone can open this device's files, no password", why: `We checked: ${what}'s FTP server lets in the public "anonymous" guest account, which anyone on your Wi-Fi can use to browse and copy whatever it shares. (We left straight away and opened nothing.)`, steps: [`In ${what}'s settings, turn off FTP, or at least turn off anonymous (guest) access.`, kind === "router" ? "On routers this is often under USB sharing or storage sharing." : UPDATE] });
+  else if (ftp && !issues.some((i) => i.port === 21))
     add({ id: "ftp", severity: isServerish ? "medium" : "high", port: 21, title: "FTP file sharing is on", why: "FTP sends usernames, passwords and files without encryption, so anything on the network can read them. It's also a common way in on cameras and routers.", steps: [kind === "nas" ? "In the storage's settings, turn off FTP and use SMB or SFTP instead." : `Turn off FTP in ${what}'s settings.`, UPDATE] });
 
   for (const n of [5900, 5901, 5902])
@@ -157,10 +160,19 @@ export function checkDevice(d: Device, gateway?: string): DeviceReport {
 
   if (has(3389)) add({ id: "rdp", severity: "medium", port: 3389, title: "Remote desktop is on", why: "Fine inside the house with a strong password, but remote desktop is one of the most attacked services if it ever becomes reachable from the internet.", steps: ["If you don't use it: Settings, System, Remote Desktop, turn it off.", "Make sure your router doesn't forward port 3389.", "Use a long password on the Windows account."] });
 
-  if ((has(445) || has(139)) && !isServerish)
+  if (probes?.smb1)
+    add({ id: "smb1", basis: "checked", severity: "high", port: 445, title: "Old Windows file sharing (SMBv1) is on", why: `We checked: ${what} still speaks SMBv1, the 1990s file-sharing protocol that the WannaCry and NotPetya worms spread through. Nothing needs it today.`, steps: [kind === "computer" ? "On Windows: search \"Turn Windows features on or off\", untick \"SMB 1.0/CIFS File Sharing Support\", restart." : `In ${what}'s settings, set the minimum SMB version to SMB2 or SMB3.`, UPDATE] });
+  if ((has(445) || has(139)) && !isServerish && !probes?.smb1)
     add({ id: "smb", severity: "medium", port: has(445) ? 445 : 139, title: "File sharing on a gadget", why: `Windows file sharing on ${what} is unusual. It often means an old, rarely updated file server, which is how worms like WannaCry spread.`, steps: [`Turn off file sharing ("SMB" or "Samba") in ${what}'s settings if you don't use it.`, UPDATE] });
 
-  if (has(554) || has(8554)) add({ id: "rtsp", severity: "medium", port: has(554) ? 554 : 8554, title: "Camera video stream is open", why: "The live video can be opened by anything on your network with the camera's stream password, which is often the factory default.", steps: ["Change the camera's password in its app (not just your app account password).", "Turn off RTSP or \"local streaming\" if you only watch through the app.", GUEST] });
+  if (has(554) || has(8554)) {
+    const port = has(554) ? 554 : 8554;
+    if (probes?.rtsp?.open)
+      add({ id: "rtsp-open", basis: "checked", severity: "critical", port, title: "Camera video plays without a password", why: `We checked: asked for its stream with no password, ${what} described its live video to us${probes.rtsp.path && probes.rtsp.path !== "/" ? ` (at ${probes.rtsp.path})` : ""}. Anyone on your Wi-Fi can watch it in a free video player. (We didn't play it.)`, steps: ["In the camera's app, turn on a password for the stream (often called RTSP, ONVIF or local streaming password).", "Or turn off RTSP / local streaming if you only watch through the app.", GUEST] });
+    else if (probes?.rtsp && !probes.rtsp.open)
+      add({ id: "rtsp", basis: "checked", severity: "low", port, title: "Camera video stream is on, with a password", why: "We checked: the stream asks for a password, which is good. If that password is still the factory default, anyone on your Wi-Fi who knows it can watch.", steps: ["Make sure the camera's stream password isn't the one from the box.", "Turn off RTSP or \"local streaming\" if you only watch through the app."] });
+    else add({ id: "rtsp", severity: "medium", port, title: "Camera video stream is open", why: "The live video can be opened by anything on your network with the camera's stream password, which is often the factory default.", steps: ["Change the camera's password in its app (not just your app account password).", "Turn off RTSP or \"local streaming\" if you only watch through the app.", GUEST] });
+  }
 
   if (has(1883)) add({ id: "mqtt", severity: "medium", port: 1883, title: "Unencrypted smart-home messages", why: "MQTT on port 1883 has no encryption and often no password, so anything on the network can read your sensors or switch your devices.", steps: ["Set a username and password on the MQTT broker (in Home Assistant: the Mosquitto add-on's settings).", "Use port 8883 with TLS if the devices support it."] });
 
@@ -236,11 +248,35 @@ export function analyse(scan: Scan): Report {
       d.worst = d.issues[0].severity;
     } else network.push(issue);
   }
+  const wifi = net?.wifi && wifiVerdict(net.wifi.security);
+  if (wifi?.issue) network.push(wifi.issue);
   if (net?.nxdomainHijack)
     network.push({ id: "dns-hijack", severity: "low", title: "Your router's DNS makes up answers", why: "When you look up a website that doesn't exist, your router (or your internet provider behind it) answers anyway, usually to show you an ad page. It means something is rewriting your name lookups, which also breaks some security tools and leaks your typos.", steps: ["In the router's settings, look for \"DNS assist\", \"search assist\" or \"error redirect\" and turn it off.", "Or set the router's DNS servers to 1.1.1.1 and 8.8.8.8 (or 9.9.9.9 for one that blocks known bad sites)."] });
 
   const issues = [...devices.flatMap((d) => d.issues), ...network].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
   return { scan: { ...scan, gateway }, devices, network, issues };
+}
+
+/**
+ * How well the Wi-Fi is locked, from the security name the computer reports
+ * ("WPA2-Personal", "WPA3 Personal", "Open", "WEP"...). Returns a short word and, if it's weak, an issue.
+ */
+export function wifiVerdict(security: string): { word: string; tone: "ok" | "warn" | "risk"; issue?: Issue } {
+  const s = security.toLowerCase();
+  if (/wpa3|sae|owe/.test(s)) return { word: "Strong (WPA3)", tone: "ok" };
+  if (/wpa2|rsn/.test(s))
+    return {
+      word: "Good (WPA2)",
+      tone: "ok",
+      issue: { id: "wifi-wpa2", severity: "info", title: "Your Wi-Fi uses WPA2", why: "WPA2 is fine with a long password. WPA3 is newer and stops people guessing the password offline, so use it if your router offers it.", steps: ["In the router's Wi-Fi settings, choose \"WPA2/WPA3\" or \"WPA3\" if it's there.", "Either way, use a long Wi-Fi password: four or five random words."] },
+    };
+  if (/wep/.test(s))
+    return { word: "Broken (WEP)", tone: "risk", issue: { id: "wifi-weak", severity: "critical", title: "Your Wi-Fi lock (WEP) can be broken in minutes", why: "WEP was cracked in the 2000s. Anyone nearby can work out the password with free tools and join, or read your traffic.", steps: ["In the router's Wi-Fi settings, change security to WPA2 or WPA3.", "Set a new, long password, then reconnect your devices."] } };
+  if (/wpa|tkip/.test(s))
+    return { word: "Old (WPA)", tone: "warn", issue: { id: "wifi-weak", severity: "high", title: "Your Wi-Fi uses the old WPA lock", why: "The first WPA (with TKIP) has known weaknesses and newer devices may refuse it.", steps: ["In the router's Wi-Fi settings, change security to WPA2 or WPA3 (AES).", "Set a long password, then reconnect your devices."] } };
+  if (/open|none|unsecured/.test(s))
+    return { word: "No password", tone: "risk", issue: { id: "wifi-open", severity: "critical", title: "Your Wi-Fi has no password", why: "Anyone in range can join, reach every device here, and on many networks see what you're doing.", steps: ["In the router's Wi-Fi settings, turn on WPA2 or WPA3.", "Pick a long password and reconnect your devices."] } };
+  return { word: security, tone: "ok" };
 }
 
 /** The router is usually .1 (or .254), and answers DNS. */

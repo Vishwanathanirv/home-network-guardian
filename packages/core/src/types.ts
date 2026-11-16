@@ -41,6 +41,15 @@ export type Details = {
   tls?: { port: number; subject?: string; issuer?: string; expires?: string; selfSigned?: boolean }[];
   /** Fastest answer in milliseconds. */
   rtt?: number;
+  /** What the safe, read-only checks proved (no passwords used or guessed). */
+  probes?: {
+    /** Camera stream: open = it described the video to us without a password. */
+    rtsp?: { open: boolean; path?: string };
+    /** FTP lets in the public "anonymous" guest. */
+    ftpAnon?: boolean;
+    /** Still speaks SMBv1, the protocol WannaCry spread through. */
+    smb1?: boolean;
+  };
 };
 
 export type Scan = {
@@ -72,6 +81,8 @@ export type Internet = {
   externalIp?: string;
   /** Doors the router opened to the internet through UPnP. */
   mappings?: Mapping[];
+  /** The Wi-Fi this computer is on and how it's locked, as the computer reports it (e.g. "WPA2-Personal"). */
+  wifi?: { ssid?: string; security: string };
 };
 
 export type Kind = "router" | "computer" | "phone" | "tv" | "speaker" | "camera" | "printer" | "nas" | "console" | "smart" | "unknown";
@@ -92,11 +103,13 @@ export type Issue = {
   port?: number;
   /** A known-vulnerability ID, when this problem matches a published one (e.g. "CVE-2024-6387"). */
   cve?: string;
+  /** How we know: "version" = guessed from the version number it reports (a hint); "checked" = proven by a safe test. */
+  basis?: "version" | "checked";
 };
 
 /* ───────────── Live mode: what the scanner's local server sends the site */
 
-export type LiveEvent = { id: number; at: string; type: "joined" | "left" | "back" | "away" | "opened" | "closed" | "moved" | "scan"; ip: string; mac?: string; name?: string; detail?: string };
+export type LiveEvent = { id: number; at: string; type: "joined" | "left" | "back" | "away" | "opened" | "closed" | "moved" | "scan" | "lag"; ip: string; mac?: string; name?: string; detail?: string };
 export type Presence = { ip: string; mac?: string; online: boolean; firstSeen: string; lastSeen: string; since: string; misses: number };
 export type LiveState = {
   version: 1;

@@ -41,6 +41,11 @@ export function Steps({ issue }: { issue: Issue }) {
   return (
     <div className="text-[14.5px] leading-relaxed">
       <p className="text-muted">{issue.why}</p>
+      {issue.basis && (
+        <span className="mt-1.5 mr-1.5 inline-flex items-center rounded-full border border-line px-2.5 py-0.5 text-[12px] font-semibold" style={{ color: issue.basis === "checked" ? "var(--risk)" : "var(--muted)" }}>
+          {issue.basis === "checked" ? "Checked: we confirmed this" : "Possible: based on its version number"}
+        </span>
+      )}
       {issue.cve && (
         <a href={`https://nvd.nist.gov/vuln/detail/${issue.cve}`} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-0.5 font-mono text-[12px] font-semibold hover:border-faint">
           <span className="h-1.5 w-1.5 rounded-full bg-risk" />
@@ -212,7 +217,7 @@ export function HomeSheet({ onPick, compact }: { onPick: (ip: string) => void; c
             </Section>
           )}
           <p className="mt-6 text-[12.5px] leading-relaxed text-faint">
-            The example home is made up; your scans stay in your browser. Vendor names from the IEEE OUI registry.{" "}
+            {now.demo ? "The example home is made up. " : ""}Your scans stay on your computer. Vendor names from the IEEE OUI registry.{" "}
             <a href="https://github.com/Vishwanathanirv/home-network-guardian" className="underline underline-offset-2">
               Source
             </a>
@@ -324,9 +329,10 @@ export function ChangesSheet({ onClose, onPick }: { onClose: () => void; onPick:
 
 export function HowSheet({ onClose }: { onClose: () => void }) {
   const parts = [
-    ["Finding devices", "The scanner tries to connect to 39 well-known ports on every address in your network. A device that answers, or even refuses, is there. Your computer then knows its hardware ID (MAC address) from the ARP table. It also asks UPnP devices to announce themselves. It only scans private addresses and never tries to log in to anything."],
+    ["Finding devices", "The scanner knocks once on every address in your network, then reads your computer's ARP table, which lists even silent phones. Only the devices it found get the full check of 39 well-known services, so a scan takes seconds. It asks each one its name six ways (Bonjour, NetBIOS, LLMNR, UPnP, the router and your computer's own lookup), and checks how your Wi-Fi is locked. It only scans private addresses, gently, and runs entirely on your computer."],
     ["Working out what each one is", "The first half of a MAC address belongs to the maker, so Lamplight looks it up in the IEEE's public registry (about 40,000 entries). It adds the device's own name, the services it answers on (554 means a video stream, 9100 a printer, 62078 an iPhone) and the scanner's guess at its software. Each clue adds weight to a type, and the device's page says which clues were used and how sure it is."],
-    ["Deciding what matters", "The checks are written for homes. Telnet on a camera and Android debugging on a TV box are urgent, because botnets take over exactly those. File sharing is normal on a NAS and odd on a light bulb. UPnP on the router, an unencrypted camera stream and a settings page without HTTPS are worth fixing this week. A short list of software versions with notorious holes is checked too."],
+    ["Deciding what matters", "The checks are written for homes. Telnet on a camera and Android debugging on a TV box are urgent, because botnets take over exactly those. File sharing is normal on a NAS and odd on a light bulb. UPnP on the router, an unencrypted camera stream and a settings page without HTTPS are worth fixing this week. A short list of software versions with notorious holes is checked too, marked \"possible\" because makers sometimes fix a flaw without changing the version number."],
+    ["Proving the worst ones", "Where it can, Lamplight checks instead of guessing, without ever using a password: does a camera hand over its video stream with no password, does an FTP server let in the public guest account, does a device still speak SMBv1, the protocol WannaCry spread through. These read nothing and change nothing."],
   ];
   return (
     <div>
@@ -346,10 +352,11 @@ export function HowSheet({ onClose }: { onClose: () => void }) {
       </ol>
       <Section title="What it can't tell you">
         <ul className="list-disc space-y-1.5 pl-5 text-[14.5px] leading-relaxed text-muted">
-          <li>Whether a password is weak. Lamplight never logs in to your devices.</li>
+          <li>Whether a password is weak. Lamplight never uses or guesses passwords.</li>
           <li>Anything about devices that don't answer. Phones usually ignore connections, which is good.</li>
-          <li>Every known vulnerability. Version checks are few and certain on purpose.</li>
-          <li>What your router exposes to the internet. That needs a scan from outside your home.</li>
+          <li>Every known vulnerability. Version checks are few on purpose, and only a hint: an update is the real answer.</li>
+          <li>Every door your router opens to the internet. It reads the ones opened through UPnP; ones you set by hand need a scan from outside your home.</li>
+          <li>What devices send to the internet, or devices on a separate guest network.</li>
         </ul>
       </Section>
       <Section title="Privacy">

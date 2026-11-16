@@ -3,7 +3,8 @@ import http from "node:http";
 import https from "node:https";
 import { compare, ipNum, isPrivate, type Device, type LiveEvent, type LiveState } from "@lamplight/core";
 import { connectTime } from "./health";
-import { arpTable, hostsIn, pool, probe, scanNetwork } from "./net";
+import { arpTable, hostsIn, PACE, pool, probe, scanNetwork } from "./net";
+import { localHost, serveSite, type SiteFiles } from "./ui";
 
 export type Fetched = { status: number; contentType: string; title?: string; server?: string; bytes: number; text?: string; dataUrl?: string; truncated?: boolean };
 
@@ -66,7 +67,19 @@ const keyOf = (d: { mac?: string; ip: string }) => d.mac?.toUpperCase() || d.ip;
 // The name a device gives itself, never a chip maker.
 const nameOf = (d?: Device) => d?.details?.name ?? d?.hostname?.replace(/\.(home|lan|local)$/i, "").replace(/[-_]+/g, " ");
 
-export type LiveOptions = { cidr: string; self?: string; port: number; every: number; sweepSeconds?: number; log?: (s: string) => void };
+/**
+ * Is this internet reading a real slowdown? It has to be well above the usual (the middle of the
+ * last 20 readings), at least 3 times it and 80 ms more, so ordinary wobble isn't reported.
+ */
+export function lagSpike(history: { internetMs?: number }[], ms?: number): { ms: number; usual: number } | undefined {
+  if (ms === undefined) return undefined;
+  const past = history.slice(-21, -1).map((h) => h.internetMs).filter((x): x is number => x !== undefined).sort((a, b) => a - b);
+  if (past.length < 6) return undefined;
+  const usual = past[Math.floor(past.length / 2)];
+  return ms > usual * 3 && ms > usual + 80 ? { ms: Math.round(ms), usual: Math.round(usual) } : undefined;
+}
+
+export type LiveOptions = { cidr: string; self?: string; port: number; every: number; sweepSeconds?: number; log?: (s: string) => void; site?: SiteFiles; gentle?: boolean };
 
 export function startLive(o: LiveOptions) {
   const key = randomBytes(12).toString("hex");
@@ -98,6 +111,7 @@ export function startLive(o: LiveOptions) {
 
   // Devices that joined before we knew their name; the next full scan names them in the window.
   const unnamed = new Set<string>();
+  let lastLag = 0;
   let full: Promise<void> | null = null;
   let pending: NodeJS.Timeout | null = null;
   async function fullScan(reason: string) {
@@ -112,6 +126,7 @@ export function startLive(o: LiveOptions) {
         const scan = await scanNetwork({
           cidr: o.cidr,
           self: o.self,
+          gentle: o.gentle,
           onProgress: (d, t) => {
             const pct = Math.round((d / t) * 100);
             state.scanning = { step: "Checking each device", pct };
@@ -158,7 +173,7 @@ export function startLive(o: LiveOptions) {
     const hosts = hostsIn(o.cidr);
     await pool(
       hosts.flatMap((ip) => QUICK.map((port) => ({ ip, port }))),
-      512,
+      PACE[o.gentle ? "gentle" : "normal"].knock,
       async ({ ip, port }) => {
         if (answered.has(ip)) return;
         const r = await probe(ip, port, 400, "none");
@@ -201,9 +216,18 @@ export function startLive(o: LiveOptions) {
     const [routerMs, internetMs] = await Promise.all([gw ? connectTime(gw, port, 1500) : undefined, connectTime("1.1.1.1", 443, 2000)]);
     state.health.push({ at: now(), routerMs, internetMs });
     if (state.health.length > 240) state.health.shift();
+    const lag = lagSpike(state.health, internetMs);
+    if (lag && Date.now() - lastLag > 120_000) {
+      lastLag = Date.now();
+      // Who arrived in the last two minutes? The newest one is the likeliest reason.
+      const since = Date.now() - 120_000;
+      const s = [...state.events].reverse().find((e) => (e.type === "joined" || e.type === "back") && Date.parse(e.at) >= since);
+      emit({ type: "lag", ip: s?.ip ?? gw ?? "internet", mac: s?.mac, name: s?.name, detail: `to ${lag.ms} ms (usually ${lag.usual} ms)${s ? `, right after this ${s.type === "joined" ? "joined" : "came back"}` : ""}` });
+    }
   }
 
   const server = http.createServer((req, res) => {
+    if (!localHost(req, o.port)) return res.writeHead(421, { "content-type": "text/plain" }).end("Open Lamplight at http://127.0.0.1 on this computer.");
     const origin = req.headers.origin;
     res.setHeader("Vary", "Origin");
     if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
@@ -212,6 +236,9 @@ export function startLive(o: LiveOptions) {
     if (req.headers["access-control-request-private-network"]) res.setHeader("Access-Control-Allow-Private-Network", "true");
     if (req.method === "OPTIONS") return res.writeHead(204).end();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    // The whole website, served from this computer. It holds nothing private; the data below needs the key.
+    if (o.site?.size && !["/state", "/scan", "/fetch"].includes(url.pathname) && serveSite(o.site, req, res, url.pathname)) return;
+    if (o.site?.size && /\.[a-z0-9]+$/i.test(url.pathname)) return res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
     if (url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(`<!doctype html><meta charset="utf-8"><title>Lamplight live</title><body style="font:16px system-ui;background:#0b1116;color:#e5ebef;padding:2rem">Lamplight live is running and watching ${o.cidr}. Open the link printed in your terminal.`);

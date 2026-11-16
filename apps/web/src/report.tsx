@@ -38,6 +38,7 @@ export function ReportPage({ onClose }: { onClose: () => void }) {
         <Dot s={i.severity} />
         <strong>{i.title}</strong>
         <span className="rp-tag">{SEV_LABEL[i.severity]}</span>
+        {i.basis && <span className="rp-tag">{i.basis === "checked" ? "Confirmed" : "Possible"}</span>}
         {i.cve && (
           <a href={`https://nvd.nist.gov/vuln/detail/${i.cve}`} target="_blank" rel="noreferrer" className="rp-cve">
             {i.cve}

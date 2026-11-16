@@ -105,6 +105,7 @@ export const DEMO_INTERNET: Internet = {
   dnsMs: 24,
   nxdomainHijack: true,
   externalIp: "203.0.113.42",
+  wifi: { ssid: "Archer_C6", security: "WPA2-Personal" },
   mappings: [
     { protocol: "UDP", externalPort: 9308, internalPort: 9308, client: "192.168.1.60", description: "PS5 Remote Play", enabled: true },
     { protocol: "TCP", externalPort: 8081, internalPort: 80, client: "192.168.1.31", description: "IPCAM", enabled: true },

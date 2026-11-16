@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { isCgnat, isPrivate, KIND_NAME, serviceName, type DeviceReport, type Internet, type Kind, type Report } from "@lamplight/core";
+import { isCgnat, isPrivate, KIND_NAME, serviceName, wifiVerdict, type DeviceReport, type Internet, type Kind, type Report } from "@lamplight/core";
 import { ScoreRing } from "./device";
 import { displayName, gradeOf, issueKey, keyOf, scoreOf, useDone, useHome, usePlaces } from "./lib";
 import { toneOf } from "./plan";
@@ -92,6 +92,15 @@ function InternetPanel({ net, report, onPick, name }: { net?: Internet; report: 
                 {show ? "Hide" : "Show"}
               </button>
               {shared && <span className="block text-[12.5px] text-muted">Shared with other homes by your provider (carrier-grade NAT), so nobody on the internet can reach your devices directly.</span>}
+            </dd>
+          </>
+        )}
+        {net.wifi && (
+          <>
+            <dt className="text-faint">Wi-Fi lock</dt>
+            <dd style={{ color: { ok: undefined, warn: "var(--warn)", risk: "var(--risk)" }[wifiVerdict(net.wifi.security).tone] }}>
+              {wifiVerdict(net.wifi.security).word}
+              <span className="block text-[12.5px] text-muted">{net.wifi.ssid ? `${net.wifi.ssid}, ` : ""}{net.wifi.security}</span>
             </dd>
           </>
         )}

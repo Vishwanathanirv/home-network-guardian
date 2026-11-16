@@ -1,3 +1,5 @@
+import { parseAirport, parseNetsh, parseNmcli } from "../src/wifi";
+import { wifiVerdict } from "@lamplight/core";
 import http from "node:http";
 import net from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -114,5 +116,22 @@ describe("asking devices about themselves", () => {
   it("notices a login page and reads the title", () => {
     expect(readPage(200, { server: "lighttpd" }, "<title>Router &amp; Wi-Fi</title><input type=password>")).toEqual({ status: 200, title: "Router & Wi-Fi", server: "lighttpd", login: true });
     expect(readPage(401, {}, "")).toMatchObject({ login: true });
+  });
+});
+
+
+describe("how the Wi-Fi is locked", () => {
+  it("reads Windows, Mac and Linux", () => {
+    expect(parseNetsh("    Name                   : Wi-Fi\n    State                  : connected\n    SSID                   : PG-5G\n    Authentication         : WPA2-Personal\n")).toEqual({ ssid: "PG-5G", security: "WPA2-Personal" });
+    expect(parseNetsh("    State                  : disconnected\n")).toBeUndefined();
+    expect(parseAirport("      Current Network Information:\n        Home:\n          PHY Mode: 802.11ax\n          Security: WPA3 Personal\n      Other Local Wi-Fi Networks:\n")).toEqual({ ssid: "Home", security: "WPA3 Personal" });
+    expect(parseNmcli("no:Neighbour:WPA2\nyes:Home:WPA1 WPA2\n")).toEqual({ ssid: "Home", security: "WPA1 WPA2" });
+  });
+  it("says how strong each lock is", () => {
+    expect(wifiVerdict("WPA3 Personal").tone).toBe("ok");
+    expect(wifiVerdict("WPA2-Personal").issue?.severity).toBe("info");
+    expect(wifiVerdict("WEP").issue?.severity).toBe("critical");
+    expect(wifiVerdict("Open").issue?.id).toBe("wifi-open");
+    expect(wifiVerdict("WPA-Personal").issue?.severity).toBe("high");
   });
 });

@@ -173,4 +173,4 @@ function notify(e: LiveEvent) {
   }
 }
 
-export const EVENT_TEXT: Record<LiveEvent["type"], string> = { joined: "Joined the network", left: "Left", back: "Came back", away: "Went away", opened: "Started answering on", closed: "Stopped answering on", moved: "Got a new address", scan: "Full scan finished" };
+export const EVENT_TEXT: Record<LiveEvent["type"], string> = { joined: "Joined the network", left: "Left", back: "Came back", away: "Went away", opened: "Started answering on", closed: "Stopped answering on", moved: "Got a new address", scan: "Full scan finished", lag: "Internet slowed" };

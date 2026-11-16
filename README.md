@@ -13,7 +13,8 @@ Many homes now have more than a dozen connected devices, and few people could na
 
 ## What it does
 
-- **Finds the devices.** A small scanner (one file, Node 20+) checks your network, or you can open an `nmap -oX` file, or just paste the output of `arp -a`.
+- **Runs entirely on your computer.** The scanner (one file, Node 20+) has the whole app built in. `lamplight live` serves it from `http://127.0.0.1` on your own machine, so there's no outside website to trust, it works offline, and none of your data leaves the computer. It only answers to its own address (which blocks DNS-rebinding tricks), and the scan data needs the private key in the link it prints. You can still open an `nmap -oX` file, or paste the output of `arp -a`, in the hosted demo.
+- **Finds the devices, fast.** A quick knock on every address plus the computer's ARP table finds who's home (even silent phones) in a few seconds; only those devices get the full check.
 - **Works out what each one is.** It looks up the maker in the IEEE MAC address registry (about 40,000 entries), reads the device's own name and the services it answers on (554 is a video stream, 9100 a printer, 62078 an iPhone), and shows the clues it used and how sure it is. Phones and laptops that hide behind a random "private" MAC address are recognised as such.
 - **Puts it in a room.** Devices go where their name says (`echo-kitchen`, `driveway-cam`) or where that kind of device usually lives. Drag them to the right room; Lamplight remembers.
 - **Says what to fix, and when.** "Tonight" for critical problems (Telnet on a camera, Android debugging on a TV box, software with a notorious hole), "this week" for things like UPnP on the router or an open camera stream, and network-wide advice such as moving gadgets to the guest network. Every item has steps someone without a networking background can follow.
@@ -27,7 +28,10 @@ Many homes now have more than a dozen connected devices, and few people could na
 - **Keeps a to-do list.** Tick a problem off when you've fixed it: the device's badge on the plan updates and a progress bar shows how far you've got.
 - **Names devices by what they are.** Cheap smart bulbs and plugs all share one chip maker ("Espressif"), so instead of a wall of identical names Lamplight labels them by type and numbers them — "Smart home gadget 3" — and uses the real name when a device announces one ("Living Room TV"). Each device shows its model and, in a word, what it's busy doing (streaming, printing, sharing files).
 - **A shareable security report.** One click opens a clean, printable report of the whole home — an A–F grade, a count of problems by seriousness, the weakest devices, and every fix. Save it as a PDF from your browser or share the page.
-- **Known-vulnerability (CVE) checks.** When a device's software banner matches a published hole, Lamplight names it with its CVE id and links to the public database (a short, curated, offline list — certain matches, not a full scan).
+- **Known-vulnerability (CVE) checks, honestly labelled.** When a device's software banner matches a published hole, Lamplight names it with its CVE id and links to the public database. These are marked **Possible**, because makers sometimes fix a flaw without changing the version number; the fix is always to update.
+- **Proves the worst problems instead of guessing.** Safe, read-only checks that never use or guess a password: does a camera describe its video stream to anyone who asks without a password, does an FTP server let in the public "anonymous" guest (it leaves at once and opens nothing), and does a device still speak SMBv1, the protocol WannaCry spread through. Proven findings are marked **Checked**.
+- **Checks how your Wi-Fi is locked.** It asks your own computer whether the Wi-Fi uses WPA3, WPA2, the old WPA, WEP or no password, and says what to change.
+- **Links slowdowns to devices.** In live mode, when the internet suddenly gets much slower than usual, it says so and names the device that joined just before.
 - **No command line needed.** You download one tiny launcher (built in your browser, pointed at your own site). Double-click it: the first run fetches the scanner itself, finds your network, scans, and opens the site. No typing, and nothing to lose track of. The terminal commands are still there for anyone who wants them.
 - **A universe view (the default).** The home opens as a little universe you fly around: your router is a glowing arc-reactor core, and every device is a star scattered through space in loose constellations of its own kind, each kind its own colour, with its real name under it when it shared one. Devices that need attention burn amber or red and send packets of data to the core. Drag to fly, pinch or scroll to zoom, hover any star for what it is and what it's doing. The house plan and table are a tap away.
 - **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out. Ctrl K jumps to any device or action, and a table view lists every device side by side, sortable and downloadable as CSV.
@@ -81,20 +85,23 @@ node lamplight.cjs live                            # keep watching, and see it l
 node lamplight.cjs demo                            # the example home, to try it without scanning
 ```
 
-The site's **Scan your home** panel has a no-typing path (download the launcher + the scanner, double-click the launcher) and, for anyone who prefers it, every terminal command filled in with your own network. The launcher just runs `lamplight live` for you and opens your browser.
+The site's **Scan your home** panel leads with two lines to paste (download the file, run `lamplight live`), says plainly what they do, and links to the source so you can read it first. A double-click launcher is offered as a second way; some Windows setups (Smart App Control) block unsigned downloads. Nothing is ever piped straight into a shell.
+
+Add `--gentle` to scan slowly, for small or fussy routers and mesh Wi-Fi.
 
 How it scans:
 
 1. It picks the network your router is on, skipping virtual adapters from VirtualBox, VMware, Hyper-V, WSL and Docker.
-2. It tries a TCP connection to 39 ports chosen for homes (risky services, plus ones that identify a device) on every address, 256 at a time. A device that answers **or refuses** is there, and the time it takes is its response time.
+2. It knocks on a dozen common ports on every address, then reads the ARP table, which lists even phones that ignore knocks. Only the devices it found get a TCP connection to 39 ports chosen for homes (risky services, plus ones that identify a device), 160 at a time (32 with `--gentle`). A device that answers **or refuses** is there, and the time it takes is its response time.
 3. It reads short banners (SSH, Telnet, FTP), and for web ports the page's title, its `Server` header and whether it has a login form. For HTTPS ports it reads the certificate.
-4. It asks who's there the polite way: a Bonjour (mDNS) question for 25 kinds of service, a UPnP search (then reads each device's own description), and a NetBIOS name query.
-5. It reads the ARP table for hardware addresses, does reverse DNS for names, and finds the router from the default route.
-6. It asks the router (UPnP Internet Gateway Device) for its internet address and its list of port forwards, times connections to the router and to two public servers, and asks the router's DNS for a name that can't exist to see if it makes one up.
+4. It asks each device its name six ways: Bonjour (to the whole network and to each device directly, which gets past firewalls that drop group replies), a direct reverse lookup on the device's own Bonjour port (iPhones and Macs answer it), NetBIOS, LLMNR (Windows laptops), UPnP descriptions, and the computer's own name lookup.
+5. For a camera stream, an FTP server or Windows file sharing, it runs the safe checks above.
+6. It reads the ARP table for hardware addresses, asks the router's DNS for names, finds the router from the default route, and asks the computer how the Wi-Fi is locked.
+7. It asks the router (UPnP Internet Gateway Device) for its internet address and its list of port forwards, times connections to the router and to two public servers, and asks the router's DNS for a name that can't exist to see if it makes one up.
 
-In **live mode** a quick check every 15 seconds (a knock on a few common ports, then the ARP table, which catches phones that ignore knocks) notices devices arriving and leaving; a device has to miss three checks in a row to count as gone, because Wi-Fi devices doze. A full scan runs every 10 minutes and soon after anything new joins. The site reads it from `http://127.0.0.1:47114`, which listens only on this computer and only answers requests carrying the key in the printed link.
+In **live mode** a quick check every 15 seconds (a knock on a few common ports, then the ARP table, which catches phones that ignore knocks) notices devices arriving and leaving; a device has to miss three checks in a row to count as gone, because Wi-Fi devices doze. A full scan runs every 10 minutes and soon after anything new joins. The app is served from `http://127.0.0.1:47114` on this computer; the scan data there only goes to requests carrying the key in the printed link. If the internet suddenly slows to several times its usual speed, it reports it and names the device that joined just before. On Windows, don't click inside the scanner's window: Windows pauses a program while text is selected in it.
 
-It **refuses public addresses** and ranges larger than /22, and never tries to log in to anything. Only scan networks you own or are allowed to test.
+It **refuses public addresses** and ranges larger than /22, and never uses or guesses a password. Only scan networks you own or are allowed to test.
 
 To run it nightly and get an email when something joins:
 
@@ -115,7 +122,11 @@ docker run --rm --network host -v "$PWD:/out" -w /out lamplight scan
 | --- | --- | --- |
 | Telnet open | Tonight | Plain-text remote login with factory passwords: how Mirai spreads |
 | Android debugging (port 5555) | Tonight | Full control of the device with no password |
-| Known-bad software | Tonight | vsftpd 2.3.4 (backdoor), Samba 3.5.0 to 4.6.4 (SambaCry), Dropbear before 2016.74, OpenSSH 8.5p1 to 9.7p1 (regreSSHion) |
+| Camera stream plays without a password (checked) | Tonight | Anyone on the Wi-Fi can watch it in a free video player |
+| FTP lets in the anonymous guest (checked) | Tonight | Anyone on the Wi-Fi can browse and copy what it shares |
+| Wi-Fi with no password or WEP | Tonight | Anyone in range can join or break in within minutes |
+| Known-bad software (possible) | Tonight | vsftpd 2.3.4 (backdoor), Samba 3.5.0 to 4.6.4 (SambaCry), Dropbear before 2016.74, OpenSSH 8.5p1 to 9.7p1 (regreSSHion) |
+| SMBv1 still on (checked) | This week | The protocol WannaCry and NotPetya spread through |
 | VNC screen sharing | Tonight | Remote control of the screen, often with a weak password |
 | UPnP on the router | This week | Any device can open your router to the internet |
 | FTP, camera streams, unencrypted MQTT, open databases, file sharing on gadgets | This week | Readable or controllable by anything on the Wi-Fi |
@@ -123,7 +134,7 @@ docker run --rm --network host -v "$PWD:/out" -w /out lamplight scan
 | Device nobody can identify | When you have a minute | It might not be yours |
 | Three or more gadgets next to your computers | Network advice | One hacked gadget can reach everything; use the guest network |
 
-Judgement depends on the device: file sharing is normal on a NAS and odd on a light bulb. Version checks are deliberately few and certain. Where Linux distributions fix a bug without changing the version number (OpenSSH on Debian, for example), the finding says so and is marked less urgent.
+Judgement depends on the device: file sharing is normal on a NAS and odd on a light bulb. Version checks are deliberately few, and labelled as possible. Where Linux distributions fix a bug without changing the version number (OpenSSH on Debian, for example), the finding says so and is marked less urgent.
 
 ## Run it
 
@@ -132,7 +143,7 @@ Requires Node 22.13+.
 ```bash
 npm install
 npm run dev          # the site on :5173
-npm test             # 17 unit tests: parsers, vendor lookup, classification, checks, comparison, scanner
+npm test             # 57 unit tests: parsers, vendor lookup, classification, checks, safe probes, the scanner and its built-in app
 npm run test:e2e     # browser tests (Playwright)
 npm run build        # the site and scanner/lamplight.cjs
 ```

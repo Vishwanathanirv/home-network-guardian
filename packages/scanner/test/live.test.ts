@@ -1,5 +1,9 @@
+import http from "node:http";
+import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startLive } from "../src/live";
+import type { AddressInfo } from "node:net";
+import { fetchResource, lagSpike, startLive } from "../src/live";
+import { siteFiles } from "../src/ui";
 
 describe("live mode's local server", () => {
   const live = startLive({ cidr: "10.255.255.0/30", port: 47991, every: 60 });
@@ -28,9 +32,7 @@ describe("live mode's local server", () => {
   });
 });
 
-import http from "node:http";
-import type { AddressInfo } from "node:net";
-import { fetchResource } from "../src/live";
+
 
 describe("fetching a page or snapshot from a device", () => {
   let dev: http.Server;
@@ -60,5 +62,47 @@ describe("fetching a page or snapshot from a device", () => {
     const r = await fetchResource(`http://127.0.0.1:${port}/`);
     expect(r).toMatchObject({ status: 200, contentType: "text/html", title: "IP Camera", server: "thttpd/2.25b" });
     expect(r?.text).toContain("<body>");
+  });
+});
+
+describe("the app built into the scanner", () => {
+  const page = "<!doctype html><title>Lamplight</title>";
+  const site = siteFiles({ "index.html": ["text/html; charset=utf-8", gzipSync(page).toString("base64")], "assets/app.js": ["text/javascript", gzipSync("1").toString("base64")] });
+  const live = startLive({ cidr: "10.255.255.0/30", port: 47992, every: 60, site });
+  afterAll(() => live.stop());
+  const base = "http://127.0.0.1:47992";
+
+  it("serves the app from this computer, and every page of it", async () => {
+    await live.ready;
+    for (const path of ["/", "/network", "/scans"]) {
+      const r = await fetch(base + path);
+      expect(r.status).toBe(200);
+      expect(await r.text()).toBe(page);
+    }
+    expect((await fetch(`${base}/assets/app.js`)).headers.get("content-type")).toBe("text/javascript");
+    expect((await fetch(`${base}/missing.js`)).status).toBe(404);
+  });
+
+  it("still keeps the scan data behind the key", async () => {
+    expect((await fetch(`${base}/state`)).status).toBe(401);
+  });
+
+  it("refuses a page that reached it under another name (DNS rebinding)", async () => {
+    const status = await new Promise<number>((done) =>
+      http.get({ host: "127.0.0.1", port: 47992, path: "/", headers: { host: "evil.example:47992" } }, (r) => (r.resume(), done(r.statusCode ?? 0))),
+    );
+    expect(status).toBe(421);
+  });
+});
+
+
+describe("spotting a real slowdown", () => {
+  const steady = Array.from({ length: 20 }, (_, i) => ({ internetMs: 18 + (i % 4) }));
+  it("ignores ordinary wobble", () => {
+    expect(lagSpike(steady, 45)).toBeUndefined();
+    expect(lagSpike(steady.slice(0, 3), 400)).toBeUndefined(); // too little history to judge
+  });
+  it("reports a real spike, with what's usual", () => {
+    expect(lagSpike([...steady, { internetMs: 260 }], 260)).toEqual({ ms: 260, usual: 20 });
   });
 });
