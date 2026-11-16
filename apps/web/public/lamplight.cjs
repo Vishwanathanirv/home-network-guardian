@@ -1146,16 +1146,33 @@ async function reverse(ip) {
   }
 }
 var TLS_PORTS = /* @__PURE__ */ new Set([443, 1443, 5001, 8443]);
+var KNOCK = [80, 443, 22, 53, 445, 139, 62078, 49152, 7e3, 8008, 554, 8080];
 async function scanNetwork(o) {
   const hosts = hostsIn(o.cidr);
   const ports = o.ports ?? DEFAULT_PORTS;
   const alive = /* @__PURE__ */ new Map();
   const rtt = /* @__PURE__ */ new Map();
   const web = /* @__PURE__ */ new Map();
-  const jobs = hosts.flatMap((ip) => ports.map((port) => ({ ip, port })));
-  let done = 0;
   const upnp = ssdp(2500, o.self);
   const bonjour = mdns(o.self);
+  let targets = hosts;
+  if (o.self && hosts.includes(o.self)) {
+    o.onStep?.("Finding who's home\u2026");
+    const here = /* @__PURE__ */ new Set();
+    await pool(
+      hosts.flatMap((ip) => KNOCK.map((port) => ({ ip, port }))),
+      512,
+      async ({ ip, port }) => {
+        if (here.has(ip)) return;
+        if ((await probe(ip, port, 500, "none")).state !== "silent") here.add(ip);
+      }
+    );
+    for (const a of await arpTable()) if (hosts.includes(a.ip)) here.add(a.ip);
+    if (here.size) targets = hosts.filter((ip) => here.has(ip));
+    o.onStep?.(`Checking ${targets.length} devices in depth\u2026`);
+  }
+  const jobs = targets.flatMap((ip) => ports.map((port) => ({ ip, port })));
+  let done = 0;
   await pool(jobs, o.concurrency ?? 256, async ({ ip, port }) => {
     const r = await probe(ip, port, o.timeout);
     if (r.state !== "silent") {
@@ -1165,7 +1182,7 @@ async function scanNetwork(o) {
       if (r.ms !== void 0) rtt.set(ip, Math.min(rtt.get(ip) ?? Infinity, r.ms));
       if (r.web) web.set(ip, [...web.get(ip) ?? [], { port, ...r.web }]);
     }
-    if (++done % 500 === 0) o.onProgress?.(done, jobs.length);
+    if (++done % 200 === 0) o.onProgress?.(done, jobs.length);
   });
   const inRange = new Set(hosts);
   o.onStep?.("Asking devices for their names\u2026");
@@ -1295,7 +1312,23 @@ function startLive(o) {
     full = (async () => {
       state.scanning = { step: reason, pct: 0 };
       try {
-        const scan = await scanNetwork({ cidr: o.cidr, self: o.self, onProgress: (d, t) => state.scanning = { step: "Checking every address", pct: Math.round(d / t * 100) }, onStep: (s) => state.scanning = { step: s, pct: 100 } });
+        const first = !state.scan;
+        const say = (s) => first && log(`${(/* @__PURE__ */ new Date()).toLocaleTimeString()}  ${s}`);
+        say("Scanning your network for the first time\u2026");
+        let lastPct = -1;
+        const scan = await scanNetwork({
+          cidr: o.cidr,
+          self: o.self,
+          onProgress: (d, t) => {
+            const pct = Math.round(d / t * 100);
+            state.scanning = { step: "Checking each device", pct };
+            if (first && pct >= lastPct + 25) say(`  ${lastPct = pct - pct % 25}% checked`);
+          },
+          onStep: (s) => {
+            state.scanning = { step: s, pct: 100 };
+            say(`  ${s}`);
+          }
+        });
         const before = state.scan;
         if (before)
           for (const c2 of compare(before, scan)) {

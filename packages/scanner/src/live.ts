@@ -105,7 +105,23 @@ export function startLive(o: LiveOptions) {
     full = (async () => {
       state.scanning = { step: reason, pct: 0 };
       try {
-        const scan = await scanNetwork({ cidr: o.cidr, self: o.self, onProgress: (d, t) => (state.scanning = { step: "Checking every address", pct: Math.round((d / t) * 100) }), onStep: (s) => (state.scanning = { step: s, pct: 100 }) });
+        const first = !state.scan;
+        const say = (s: string) => first && log(`${new Date().toLocaleTimeString()}  ${s}`);
+        say("Scanning your network for the first time…");
+        let lastPct = -1;
+        const scan = await scanNetwork({
+          cidr: o.cidr,
+          self: o.self,
+          onProgress: (d, t) => {
+            const pct = Math.round((d / t) * 100);
+            state.scanning = { step: "Checking each device", pct };
+            if (first && pct >= lastPct + 25) say(`  ${(lastPct = pct - (pct % 25))}% checked`);
+          },
+          onStep: (s) => {
+            state.scanning = { step: s, pct: 100 };
+            say(`  ${s}`);
+          },
+        });
         const before = state.scan;
         if (before)
           for (const c of compare(before, scan)) {

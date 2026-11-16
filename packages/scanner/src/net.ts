@@ -205,6 +205,8 @@ async function reverse(ip: string): Promise<string | undefined> {
 export type ScanOptions = { cidr: string; self?: string; ports?: number[]; timeout?: number; concurrency?: number; onProgress?: (done: number, total: number) => void; onStep?: (text: string) => void };
 
 const TLS_PORTS = new Set([443, 1443, 5001, 8443]);
+/** Ports almost every device answers or refuses quickly: enough to tell an address is in use. */
+const KNOCK = [80, 443, 22, 53, 445, 139, 62078, 49152, 7000, 8008, 554, 8080];
 
 export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   const hosts = hostsIn(o.cidr);
@@ -212,10 +214,31 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   const alive = new Map<string, Port[]>();
   const rtt = new Map<string, number>();
   const web = new Map<string, NonNullable<Details["web"]>>();
-  const jobs = hosts.flatMap((ip) => ports.map((port) => ({ ip, port })));
-  let done = 0;
   const upnp = ssdp(2500, o.self);
   const bonjour = mdns(o.self);
+
+  // On your own network, first find who's actually there (a quick knock, then the ARP table, which
+  // even silent phones answer), and only check those in depth. Empty addresses are most of a /24 and
+  // each one costs a full timeout, so this is several times faster. On a network you're not joined
+  // to, ARP can't see across the router, so every address gets the full check as before.
+  let targets = hosts;
+  if (o.self && hosts.includes(o.self)) {
+    o.onStep?.("Finding who's home…");
+    const here = new Set<string>();
+    await pool(
+      hosts.flatMap((ip) => KNOCK.map((port) => ({ ip, port }))),
+      512,
+      async ({ ip, port }) => {
+        if (here.has(ip)) return;
+        if ((await probe(ip, port, 500, "none")).state !== "silent") here.add(ip);
+      },
+    );
+    for (const a of await arpTable()) if (hosts.includes(a.ip)) here.add(a.ip);
+    if (here.size) targets = hosts.filter((ip) => here.has(ip));
+    o.onStep?.(`Checking ${targets.length} devices in depth…`);
+  }
+  const jobs = targets.flatMap((ip) => ports.map((port) => ({ ip, port })));
+  let done = 0;
   await pool(jobs, o.concurrency ?? 256, async ({ ip, port }) => {
     const r = await probe(ip, port, o.timeout);
     if (r.state !== "silent") {
@@ -225,7 +248,7 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
       if (r.ms !== undefined) rtt.set(ip, Math.min(rtt.get(ip) ?? Infinity, r.ms));
       if (r.web) web.set(ip, [...(web.get(ip) ?? []), { port, ...r.web }]);
     }
-    if (++done % 500 === 0) o.onProgress?.(done, jobs.length);
+    if (++done % 200 === 0) o.onProgress?.(done, jobs.length);
   });
   const inRange = new Set(hosts);
   o.onStep?.("Asking devices for their names…");
