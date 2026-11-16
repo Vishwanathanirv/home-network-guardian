@@ -228,10 +228,46 @@ body {
   transform-origin: center;
   animation: sweep 6s linear infinite;
 }
+/* Device name labels ride their orbit but counter-spin about their own centre so they stay upright. */
+.shell-label {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: orbit linear infinite;
+}
+.atom-paused .shell-label {
+  animation-play-state: paused;
+}
+/* Distant stars in the background of the universe view. */
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.twinkle {
+  animation: twinkle ease-in-out infinite;
+}
+/* A slow drift for the whole starfield, so space feels alive. */
+@keyframes drift {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.starfield {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: drift 300s linear infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .shell,
+  .shell-label,
   .risky-node,
-  .radar {
+  .radar,
+  .twinkle,
+  .starfield {
     animation: none;
   }
 }

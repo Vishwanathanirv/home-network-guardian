@@ -129,7 +129,7 @@ export function useHome(): { report: Report; changes: Change[]; isNew: (d: Devic
 }
 
 /** A real name if the device gives one; otherwise null (so it gets a numbered type label). */
-function realName(d: DeviceReport, saved?: { name?: string }): string | null {
+export function realName(d: DeviceReport, saved?: { name?: string }): string | null {
   const own = saved?.name?.trim();
   if (own) return own;
   const announced = d.details?.name?.trim();
