@@ -66,18 +66,18 @@ describe("fetching a page or snapshot from a device", () => {
 });
 
 describe("the app built into the scanner", () => {
-  const page = "<!doctype html><title>Lamplight</title>";
+  const page = "<!doctype html><head><title>Lamplight</title>";
   const site = siteFiles({ "index.html": ["text/html; charset=utf-8", gzipSync(page).toString("base64")], "assets/app.js": ["text/javascript", gzipSync("1").toString("base64")] });
   const live = startLive({ cidr: "10.255.255.0/30", port: 47992, every: 60, site });
   afterAll(() => live.stop());
   const base = "http://127.0.0.1:47992";
 
-  it("serves the app from this computer, and every page of it", async () => {
+  it("serves the app from this computer, and every page of it, carrying this session's key", async () => {
     await live.ready;
     for (const path of ["/", "/network", "/scans"]) {
       const r = await fetch(base + path);
       expect(r.status).toBe(200);
-      expect(await r.text()).toBe(page);
+      expect(await r.text()).toBe(page.replace("<head>", `<head><meta name="lamplight-live" content="47992:${live.key}">`));
     }
     expect((await fetch(`${base}/assets/app.js`)).headers.get("content-type")).toBe("text/javascript");
     expect((await fetch(`${base}/missing.js`)).status).toBe(404);
@@ -85,6 +85,13 @@ describe("the app built into the scanner", () => {
 
   it("still keeps the scan data behind the key", async () => {
     expect((await fetch(`${base}/state`)).status).toBe(401);
+  });
+
+  it("lets only the hosted app and local pages read it from another address", async () => {
+    const from = async (origin: string) => (await fetch(`${base}/`, { headers: { origin } })).headers.get("access-control-allow-origin");
+    expect(await from("https://evil.example")).toBeNull();
+    expect(await from("https://home-network-guardian.vercel.app")).toBe("https://home-network-guardian.vercel.app");
+    expect(await from("https://home-network-guardian-cxcf5mcse-vishwanathanirv-2900.vercel.app")).not.toBeNull();
   });
 
   it("refuses a page that reached it under another name (DNS rebinding)", async () => {

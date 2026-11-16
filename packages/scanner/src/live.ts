@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import http from "node:http";
+import { gunzipSync, gzipSync } from "node:zlib";
 import https from "node:https";
 import { compare, ipNum, isPrivate, type Device, type LiveEvent, type LiveState } from "@lamplight/core";
 import { connectTime } from "./health";
@@ -77,6 +78,17 @@ export function lagSpike(history: { internetMs?: number }[], ms?: number): { ms:
   if (past.length < 6) return undefined;
   const usual = past[Math.floor(past.length / 2)];
   return ms > usual * 3 && ms > usual + 80 ? { ms: Math.round(ms), usual: Math.round(usual) } : undefined;
+}
+
+/** Pages that may read the scanner from another address: the hosted app (and its previews), and local development. */
+const ALLOWED_ORIGIN = /^(https:\/\/home-network-guardian(-[\w-]+)?\.vercel\.app|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
+
+/** A copy of the built-in site whose page carries this session's key. */
+function withKey(files: SiteFiles, port: number, key: string): SiteFiles {
+  const page = files.get("index.html");
+  if (!page) return files;
+  const html = gunzipSync(page.body).toString("utf8").replace("<head>", `<head><meta name="lamplight-live" content="${port}:${key}">`);
+  return new Map([...files, ["index.html", { type: page.type, body: gzipSync(html) }]]);
 }
 
 export type LiveOptions = { cidr: string; self?: string; port: number; every: number; sweepSeconds?: number; log?: (s: string) => void; site?: SiteFiles; gentle?: boolean };
@@ -226,19 +238,23 @@ export function startLive(o: LiveOptions) {
     }
   }
 
+  // The page this scanner serves carries this session's key, so opening http://127.0.0.1:<port>
+  // connects by itself, even after a refresh or in another browser. Other websites can't read it:
+  // they aren't on the allow-list below, and a rebound address fails the host check.
+  const site = o.site && withKey(o.site, o.port, key);
   const server = http.createServer((req, res) => {
     if (!localHost(req, o.port)) return res.writeHead(421, { "content-type": "text/plain" }).end("Open Lamplight at http://127.0.0.1 on this computer.");
     const origin = req.headers.origin;
     res.setHeader("Vary", "Origin");
-    if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+    if (origin && ALLOWED_ORIGIN.test(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     if (req.headers["access-control-request-private-network"]) res.setHeader("Access-Control-Allow-Private-Network", "true");
     if (req.method === "OPTIONS") return res.writeHead(204).end();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     // The whole website, served from this computer. It holds nothing private; the data below needs the key.
-    if (o.site?.size && !["/state", "/scan", "/fetch"].includes(url.pathname) && serveSite(o.site, req, res, url.pathname)) return;
-    if (o.site?.size && /\.[a-z0-9]+$/i.test(url.pathname)) return res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
+    if (site?.size && !["/state", "/scan", "/fetch"].includes(url.pathname) && serveSite(site, req, res, url.pathname)) return;
+    if (site?.size && /\.[a-z0-9]+$/i.test(url.pathname)) return res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
     if (url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(`<!doctype html><meta charset="utf-8"><title>Lamplight live</title><body style="font:16px system-ui;background:#0b1116;color:#e5ebef;padding:2rem">Lamplight live is running and watching ${o.cidr}. Open the link printed in your terminal.`);

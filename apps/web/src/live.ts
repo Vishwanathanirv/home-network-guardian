@@ -135,6 +135,12 @@ export function resume() {
     connect(fromUrl.port, fromUrl.key);
     return;
   }
+  // Served by the scanner itself: it put this session's key in the page, so no link is needed.
+  const own = document.querySelector<HTMLMetaElement>('meta[name="lamplight-live"]')?.content.match(/^(\d+):([a-f0-9]{16,64})$/i);
+  if (own) {
+    connect(Number(own[1]), own[2]);
+    return;
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) ?? "null");
     if (saved?.port && saved?.key) connect(saved.port, saved.key);

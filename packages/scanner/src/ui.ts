@@ -21,7 +21,7 @@ export function serveSite(files: SiteFiles, req: IncomingMessage, res: ServerRes
     "content-type": file.type,
     "content-encoding": "gzip",
     "content-length": file.body.length,
-    "cache-control": want.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+    "cache-control": want.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store",
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
   });
