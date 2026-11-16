@@ -187,7 +187,7 @@ body {
   stroke-width: 5;
 }
 
-/* The atom view: shells of devices orbit the router like electrons. */
+/* The universe view: the router's arc-reactor rings turn slowly. */
 @keyframes orbit {
   to {
     transform: rotate(360deg);
@@ -228,13 +228,23 @@ body {
   transform-origin: center;
   animation: sweep 6s linear infinite;
 }
-/* Device name labels ride their orbit but counter-spin about their own centre so they stay upright. */
-.shell-label {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: orbit linear infinite;
+/* Each star in the universe view bobs gently in place, never in a circle. */
+@keyframes float {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(2.5px, -3px);
+  }
+  66% {
+    transform: translate(-2px, 2px);
+  }
 }
-.atom-paused .shell-label {
+.float {
+  animation: float ease-in-out infinite;
+}
+.atom-paused .float {
   animation-play-state: paused;
 }
 /* Distant stars in the background of the universe view. */
@@ -250,24 +260,12 @@ body {
 .twinkle {
   animation: twinkle ease-in-out infinite;
 }
-/* A slow drift for the whole starfield, so space feels alive. */
-@keyframes drift {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.starfield {
-  transform-box: view-box;
-  transform-origin: center;
-  animation: drift 300s linear infinite;
-}
 @media (prefers-reduced-motion: reduce) {
   .shell,
-  .shell-label,
+  .float,
   .risky-node,
   .radar,
-  .twinkle,
-  .starfield {
+  .twinkle {
     animation: none;
   }
 }

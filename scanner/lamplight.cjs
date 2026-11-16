@@ -1492,7 +1492,7 @@ A scan would use ${pick.cidr}. To pick another: lamplight scan --network <networ
     const list = interfaces(gw);
     const local = pickNetwork(list);
     const cidr = values.network ?? local?.cidr;
-    if (!cidr) throw new Error("Couldn't find this computer's network. Run lamplight networks, then pass --network 192.168.1.0/24.");
+    if (!cidr) throw new Error("Couldn't find this computer's network. Run lamplight networks, then pass --network with your network, like 192.168.1.0/24.");
     const port = Number(values.port ?? 47114);
     const every = Math.max(2, Number(values.every ?? 10));
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("--port must be a number from 1024 to 65535.");
@@ -1537,13 +1537,19 @@ The first scan takes about a minute. Press Ctrl+C to stop.
     const gw = await defaultGateway();
     const local = pickNetwork(interfaces(gw));
     const cidr = values.network ?? local?.cidr;
-    if (!cidr) throw new Error("Couldn't find this computer's network. Run lamplight networks, then pass --network 192.168.1.0/24.");
+    if (!cidr) throw new Error("Couldn't find this computer's network. Run lamplight networks, then pass --network with your network, like 192.168.1.0/24.");
     const self = values.network ? interfaces(gw).find((i) => i.cidr === values.network)?.address : local?.address;
     const ports = values.ports?.split(",").map((p) => {
       const n = Number(p.trim());
       if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`"${p}" isn't a port number.`);
       return n;
     });
+    if (values.network && !self) {
+      process.stderr.write(c("33", `Heads up: ${cidr} isn't a network this computer is joined to${local ? ` (yours is ${local.cidr})` : ""}.
+Devices there sit behind another router, so they can't tell us their names. For real names, run "node lamplight.cjs scan" with no --network.
+
+`));
+    }
     process.stderr.write(`Scanning ${cidr}${local && !values.network ? ` on ${local.name}` : ""}. This takes about a minute\u2026
 `);
     const scan = await scanNetwork({ cidr, self, ports, onProgress: (d, t) => process.stderr.write(`\r\x1B[2K${Math.round(d / t * 100)}% `), onStep: (t) => process.stderr.write(`\r\x1B[2K${t}`) });

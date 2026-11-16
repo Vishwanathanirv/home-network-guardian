@@ -145,7 +145,9 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const cidr = networkFrom(addr);
-  const net = cidr ?? "192.168.1.0/24";
+  // Only name a network when you typed one; otherwise the scanner finds your own by itself.
+  const netFlag = cidr ? ` --network ${cidr}` : "";
+  
 
   const load = (name: string, body: string) => {
     try {
@@ -174,11 +176,34 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
-      {/* The no-typing path: one click gets both files, then double-click. */}
+      {/* The quickest path: paste two lines. Windows doesn't block this like a downloaded file. */}
       <div className="mt-4 rounded-2xl border border-accent/40 bg-[color-mix(in_oklab,var(--accent)_7%,transparent)] p-4">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-accent px-2 py-0.5 text-[11.5px] font-bold text-panel">Easiest</span>
-          <h3 className="font-bold">No typing — just double-click</h3>
+          <h3 className="font-bold">Paste two lines</h3>
+        </div>
+        <ol className="mt-2.5 space-y-3 text-[13.5px] text-muted">
+          <li>
+            <span className="font-semibold text-ink">1. Open a terminal.</span>{" "}
+            {os === "windows" ? <>Press the Windows key, type <b className="text-ink">cmd</b>, press Enter.</> : os === "mac" ? "Open Terminal (Applications, then Utilities)." : null} You need{" "}
+            <a className="font-semibold text-accent" href="https://nodejs.org" target="_blank" rel="noreferrer">Node.js</a> once.
+          </li>
+          <li>
+            <span className="font-semibold text-ink">2. Get the scanner</span> (only the first time):
+            <Cmd os={os}>{`${os === "windows" ? "curl.exe" : "curl"} -L -o lamplight.cjs ${RAW}`}</Cmd>
+          </li>
+          <li>
+            <span className="font-semibold text-ink">3. Start it.</span> It finds your own network, scans it, and opens this site with your devices, updating live.
+            <Cmd os={os}>node lamplight.cjs live</Cmd>
+            <span className="mt-1 block text-[12.5px] text-faint">Want a file to keep instead? Use <code className="font-mono">node lamplight.cjs scan</code> and open the file below.</span>
+          </li>
+        </ol>
+      </div>
+
+      {/* Another way: a launcher file. Some Windows setups (Smart App Control) block it. */}
+      <div className="mt-4 rounded-2xl border border-line p-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-bold">Or: download a launcher and double-click</h3>
         </div>
         <ol className="mt-2.5 space-y-2.5 text-[13.5px] text-muted">
           <li>
@@ -207,7 +232,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
             <span className="font-semibold text-ink">3. That's it.</span> The first run downloads the scanner next to the launcher, finds your network, scans, and opens this site by itself. Keep the little window open while you use it; close it to stop.
           </li>
         </ol>
-        <p className="mt-2.5 text-[12.5px] text-faint">It needs Node.js (free, one-time). If it's missing, the launcher says so and links to it.</p>
+        <p className="mt-2.5 text-[12.5px] text-faint">It needs Node.js too. If Windows says Smart App Control blocked it, that's Windows refusing any unsigned download, not a virus. Use the two lines above instead.</p>
       </div>
 
       <button className="mt-4 flex w-full items-center justify-between text-[13.5px] font-semibold" onClick={() => setShowCmd(!showCmd)} aria-expanded={showCmd}>
@@ -254,7 +279,8 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
         </Step>
         <Step n={4} title="Scan">
           About a minute. It finds each device, asks it its name and model, reads its web page and certificate, and checks the services it answers on. It never logs in to anything.
-          <Cmd os={os}>{`node lamplight.cjs scan --network ${net}`}</Cmd>
+          <Cmd os={os}>{cidr ? `node lamplight.cjs scan --network ${cidr}` : "node lamplight.cjs scan"}</Cmd>
+          {!cidr && <p className="mt-1.5 text-[12.5px]">It picks your own network by itself. Only add --network if you typed your address above.</p>}
           {os === "windows" && <p className="mt-1.5 text-[12.5px]">If Windows asks about the firewall for Node.js, click Allow, so devices can answer.</p>}
         </Step>
         <Step n={5} title="Open the result here">
@@ -301,8 +327,8 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
             [
               ["Print the to-do list for a scan", "node lamplight.cjs report lamplight-2026-11-15.json"],
               ["See what changed between two scans", "node lamplight.cjs compare last-week.json tonight.json"],
-              ["Choose the file name", `node lamplight.cjs scan --network ${net} --out tonight.json`],
-              ["Check only some services", `node lamplight.cjs scan --network ${net} --ports 22,23,80,443,554,5555`],
+              ["Choose the file name", `node lamplight.cjs scan${netFlag} --out tonight.json`],
+              ["Check only some services", `node lamplight.cjs scan${netFlag} --ports 22,23,80,443,554,5555`],
               ["Get the report as JSON, for other tools", "node lamplight.cjs report tonight.json --json"],
               ["All options", "node lamplight.cjs --help"],
             ] as const
@@ -318,7 +344,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
             <dt className="font-semibold">Scan every night and get told about new devices</dt>
             <dd className="text-muted">
               {os === "windows" ? "Windows Task Scheduler runs it at 2am; compare exits with code 1 when a device joins." : "cron runs it at 2am; compare exits with code 1 when a device joins, so cron can mail you."}
-              <Cmd os={os}>{os === "windows" ? `schtasks /create /sc daily /st 02:00 /tn Lamplight /tr "node %USERPROFILE%\\lamplight.cjs scan --network ${net} --out %USERPROFILE%\\today.json"` : `(crontab -l; echo "0 2 * * * cd ~ && node lamplight.cjs scan --network ${net} --out today.json >/dev/null && node lamplight.cjs compare last.json today.json; mv today.json last.json") | crontab -`}</Cmd>
+              <Cmd os={os}>{os === "windows" ? `schtasks /create /sc daily /st 02:00 /tn Lamplight /tr "node %USERPROFILE%\\lamplight.cjs scan${netFlag} --out %USERPROFILE%\\today.json"` : `(crontab -l; echo "0 2 * * * cd ~ && node lamplight.cjs scan${netFlag} --out today.json >/dev/null && node lamplight.cjs compare last.json today.json; mv today.json last.json") | crontab -`}</Cmd>
             </dd>
           </div>
         </dl>
@@ -330,7 +356,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
             <dt className="font-semibold">nmap, if you have it</dt>
             <dd className="text-muted">
               Lamplight reads its XML. Without the Lamplight scanner there are no names, models or certificates.
-              <Cmd os={os}>{`${os === "windows" ? "" : "sudo "}nmap -sV -O -oX scan.xml ${net}`}</Cmd>
+              <Cmd os={os}>{`${os === "windows" ? "" : "sudo "}nmap -sV -O -oX scan.xml ${cidr ?? "YOUR-NETWORK/24"}`}</Cmd>
             </dd>
           </div>
           <div>

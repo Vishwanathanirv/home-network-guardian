@@ -301,7 +301,7 @@ function App() {
             { id: "network", t: "Your network", hint: "grade internet speed router doors upnp", run: () => navigate("/network") },
             { id: "report", t: "Security report (print or PDF)", hint: "report pdf share print cve", run: () => navigate("/report") },
             { id: "v-map", t: "Show the house plan", hint: "map rooms", run: () => setView("map") },
-            { id: "v-atom", t: "Show the atom view", hint: "graph network orbit constellation", run: () => setView("atom") },
+            { id: "v-atom", t: "Show the universe view", hint: "atom graph galaxy stars constellation space", run: () => setView("atom") },
             { id: "v-table", t: "Show all devices as a table", hint: "list csv sort", run: () => setView("table") },
             { id: "scan", t: "Scan your home", hint: "commands terminal cmd", run: () => navigate("/scans") },
             { id: "changes", t: "What changed", hint: "joined compare", run: () => navigate("/changes") },
@@ -347,7 +347,7 @@ function App() {
           {(
             [
               ["map", "House plan", "M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3zM9 4v13M15 7v13"],
-              ["atom", "Atom view", "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 3a16 7 0 0 0 0 18M12 3a16 7 0 0 1 0 18M4 7.5a16 7 60 0 0 16 9M4 16.5a16 7 60 0 1 16-9"],
+              ["atom", "Universe", "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 3a16 7 0 0 0 0 18M12 3a16 7 0 0 1 0 18M4 7.5a16 7 60 0 0 16 9M4 16.5a16 7 60 0 1 16-9"],
               ["table", "Table", "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14"],
             ] as const
           ).map(([v, label, d]) => (

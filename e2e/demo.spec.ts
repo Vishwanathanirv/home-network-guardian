@@ -81,15 +81,21 @@ test("the network page grades the whole home, and the scan page has the commands
 
   await page.goto("/scans");
   await page.getByRole("tab", { name: "Windows" }).click();
-  // The no-typing path leads: one button really downloads the launcher (and the scanner).
+  // Pasting two lines leads, because Windows Smart App Control can block a downloaded launcher.
+  await expect(details(page).getByText(/curl\.exe -L -o lamplight\.cjs/).first()).toBeVisible();
+  await expect(details(page).getByText("node lamplight.cjs live").first()).toBeVisible();
+  // The launcher is still there as another way, and really downloads.
   const dl = page.waitForEvent("download");
   await details(page).getByRole("button", { name: /Download the Windows launcher/ }).click();
   expect((await dl).suggestedFilename()).toBe("lamplight-windows.cmd");
   // The terminal commands are still there for people who want them.
   await page.getByRole("button", { name: /Prefer to type commands/ }).click();
+  // With no address typed, the scan finds your own network by itself; it never guesses one.
+  await expect(details(page).getByText("node lamplight.cjs scan", { exact: true }).first()).toBeVisible();
+  await expect(details(page).getByText(/--network 192\.168\.1\.0/)).toHaveCount(0);
   await page.getByLabel("Your computer's address").fill("10.101.250.38");
   await expect(details(page).getByText("node lamplight.cjs scan --network 10.101.250.0/24").first()).toBeVisible();
-  await expect(details(page).getByText(/curl\.exe -L -o lamplight\.cjs/)).toBeVisible();
+  await expect(details(page).getByText(/curl\.exe -L -o lamplight\.cjs/).first()).toBeVisible();
 });
 
 test("live mode: the site reads the scanner on this computer and shows who comes and goes", async ({ page }) => {
@@ -161,10 +167,10 @@ test("in live mode, a camera's snapshot shows right in the app", async ({ page }
   await expect(details(page).getByRole("link", { name: "http://192.168.1.30:80", exact: true })).toHaveAttribute("href", "http://192.168.1.30:80/");
 });
 
-test("the atom view draws the network and opens a device, with friendly names", async ({ page }) => {
+test("the universe view draws the network and opens a device, with friendly names", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /devices are home/ })).toBeVisible();
-  await page.getByRole("button", { name: "Atom view", exact: true }).click();
+  await page.getByRole("button", { name: "Universe", exact: true }).click();
   await expect(page.getByRole("group", { name: "Your network as an atom" })).toBeVisible();
   // Cheap IoT is named by what it is, not the chip maker.
   await page.getByRole("button", { name: "Table", exact: true }).click();

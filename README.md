@@ -29,7 +29,7 @@ Many homes now have more than a dozen connected devices, and few people could na
 - **A shareable security report.** One click opens a clean, printable report of the whole home — an A–F grade, a count of problems by seriousness, the weakest devices, and every fix. Save it as a PDF from your browser or share the page.
 - **Known-vulnerability (CVE) checks.** When a device's software banner matches a published hole, Lamplight names it with its CVE id and links to the public database (a short, curated, offline list — certain matches, not a full scan).
 - **No command line needed.** You download one tiny launcher (built in your browser, pointed at your own site). Double-click it: the first run fetches the scanner itself, finds your network, scans, and opens the site. No typing, and nothing to lose track of. The terminal commands are still there for anyone who wants them.
-- **An atom view (the default).** The home opens as a living network graph: your router is the glowing, pulsing nucleus and every device orbits it on a shell grouped by kind, with packets of data streaming along the bonds to the centre and risky devices glowing red. Hover any node for its name, model, address and what it's doing. The house plan and table are a tap away.
+- **A universe view (the default).** The home opens as a little universe you fly around: your router is a glowing arc-reactor core, and every device is a star scattered through space in loose constellations of its own kind, each kind its own colour, with its real name under it when it shared one. Devices that need attention burn amber or red and send packets of data to the core. Drag to fly, pinch or scroll to zoom, hover any star for what it is and what it's doing. The house plan and table are a tap away.
 - **Finds things fast.** Search by name, maker, room, address or problem ("camera", "kitchen", "telnet"), or tap a filter like *Needs you tonight* or *To identify*. Everything else on the plan fades out. Ctrl K jumps to any device or action, and a table view lists every device side by side, sortable and downloadable as CSV.
 - **Notices change.** Compare two scans to see who joined, who left, and what started answering. The scanner exits with code 1 when a new device joins, so a nightly cron job can email you.
 
@@ -37,7 +37,7 @@ Many homes now have more than a dozen connected devices, and few people could na
 
 ![The printable security report](docs/screenshots/report.png)
 
-![The atom view: the router at the centre, devices orbiting by kind](docs/screenshots/atom.png)
+![The universe view: the router at the core, devices scattered in constellations by kind](docs/screenshots/atom.png)
 
 ![Live mode: who comes and goes, and the connection, as it happens](docs/screenshots/live.png)
 
