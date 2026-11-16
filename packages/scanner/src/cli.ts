@@ -6,6 +6,7 @@ import { analyse, compare, DEMO_DETAILS, DEMO_INTERNET, DEMO_XML_TONIGHT, KIND_N
 import oui from "../../core/data/oui.json";
 import { UI } from "lamplight:ui";
 import { startLive } from "./live";
+import { browserCommand } from "./open";
 import { siteFiles } from "./ui";
 
 /** The website, built into this file, so live mode needs nothing from the internet. */
@@ -39,7 +40,7 @@ setOui(oui as OuiTable);
 
 /** Opens a link in the computer's default browser, so no one has to copy a URL. Best effort. */
 function openBrowser(url: string) {
-  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  const [cmd, args] = browserCommand(url);
   try {
     spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
   } catch {

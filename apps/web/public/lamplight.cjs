@@ -1759,6 +1759,12 @@ function startLive(o) {
   };
 }
 
+// src/open.ts
+function browserCommand(url, platform = process.platform) {
+  if (platform === "win32") return ["rundll32", ["url.dll,FileProtocolHandler", url]];
+  return platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+}
+
 // src/cli.ts
 var SITE = siteFiles(UI);
 function publicNetworkWarning() {
@@ -1783,7 +1789,7 @@ To fix it: Settings > Network & internet > Wi-Fi > click your network > choose "
 }
 setOui(oui_default);
 function openBrowser(url) {
-  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  const [cmd, args] = browserCommand(url);
   try {
     (0, import_node_child_process3.spawn)(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {
     }).unref();
