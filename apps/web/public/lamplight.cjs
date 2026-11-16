@@ -941,6 +941,52 @@ async function igd(location) {
   }
   return { externalIp, mappings };
 }
+function askName(ip, timeout = 1200) {
+  const q = ip.split(".").reverse().join(".") + ".in-addr.arpa";
+  const head = Buffer.alloc(12);
+  head.writeUInt16BE(Math.floor(Math.random() * 65535), 0);
+  head.writeUInt16BE(1, 4);
+  const parts = [head];
+  for (const label of q.split(".")) {
+    const b = Buffer.from(label, "utf8");
+    parts.push(Buffer.from([b.length]), b);
+  }
+  parts.push(Buffer.from([0, 0, 12, 0, 1]));
+  const packet = Buffer.concat(parts);
+  return new Promise((done) => {
+    const sock = import_node_dgram.default.createSocket("udp4");
+    let over = false;
+    const finish = (v) => {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      try {
+        sock.close();
+      } catch {
+      }
+      done(v);
+    };
+    const timer = setTimeout(() => finish(), timeout);
+    sock.on("error", () => finish());
+    sock.on("message", (msg) => {
+      try {
+        const hit = parseDns(msg).find((r) => r.type === 12 && typeof r.data === "string" && r.data.length > 1);
+        if (hit) finish(hit.data.replace(/\.$/, ""));
+      } catch {
+      }
+    });
+    sock.send(packet, 5353, ip, (e) => e && finish());
+  });
+}
+async function askNames(ips) {
+  const out = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ips.length; i += 48) {
+    const batch = ips.slice(i, i + 48);
+    const got = await Promise.all(batch.map((ip) => askName(ip)));
+    batch.forEach((ip, k) => got[k] && out.set(ip, got[k]));
+  }
+  return out;
+}
 
 // src/net.ts
 var run = (0, import_node_util.promisify)(import_node_child_process.execFile);
@@ -1126,8 +1172,9 @@ async function scanNetwork(o) {
   const [arp, gateway, announced, bonj] = await Promise.all([arpTable(), defaultGateway(), upnp, bonjour]);
   const macs = new Map(arp.filter((a) => inRange.has(a.ip)).map((a) => [a.ip, a]));
   const ips = [.../* @__PURE__ */ new Set([...alive.keys(), ...macs.keys(), ...[...announced.hints.keys(), ...bonj.keys()].filter((ip) => inRange.has(ip))])];
-  const [names, descs, certs] = await Promise.all([
+  const [names, own, descs, certs] = await Promise.all([
     netbios(ips),
+    askNames(ips),
     Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, urls]) => [ip, await upnpDescription(urls[0])])),
     Promise.all(ips.flatMap((ip) => (alive.get(ip) ?? []).filter((p) => TLS_PORTS.has(p.port)).map(async (p) => [ip, await certificate(ip, p.port)])))
   ]);
@@ -1149,7 +1196,7 @@ async function scanNetwork(o) {
         rtt: rtt.get(ip)
       };
       for (const k of Object.keys(details)) if (details[k] === void 0 || Array.isArray(details[k]) && !details[k].length) delete details[k];
-      const hostname = macs.get(ip)?.hostname ?? await reverse(ip) ?? (b?.host ? `${b.host}.local` : void 0);
+      const hostname = macs.get(ip)?.hostname ?? own.get(ip) ?? await reverse(ip) ?? (b?.host ? `${b.host}.local` : void 0);
       return { ip, mac: macs.get(ip)?.mac, hostname, ports: ports2, hints, ...Object.keys(details).length ? { details } : {} };
     })
   );
@@ -1213,7 +1260,7 @@ function fetchResource(target, timeout = 4e3, limit = 3e6) {
 }
 var QUICK = [80, 443, 22, 53, 445, 62078, 7e3, 8008, 554, 8080];
 var keyOf = (d) => d.mac?.toUpperCase() || d.ip;
-var nameOf = (d) => d?.details?.name ?? d?.hostname?.replace(/\.(home|lan|local)$/i, "") ?? d?.vendor;
+var nameOf = (d) => d?.details?.name ?? d?.hostname?.replace(/\.(home|lan|local)$/i, "").replace(/[-_]+/g, " ");
 function startLive(o) {
   const key = (0, import_node_crypto.randomBytes)(12).toString("hex");
   const log = o.log ?? (() => {
@@ -1225,7 +1272,8 @@ function startLive(o) {
     const ev = { id: nextId++, at: now(), ...e };
     state.events.push(ev);
     if (state.events.length > 500) state.events.shift();
-    log(`${(/* @__PURE__ */ new Date()).toLocaleTimeString()}  ${e.type.padEnd(7)} ${e.name ?? ""} ${e.ip}${e.detail ? `  ${e.detail}` : ""}`);
+    if ((e.type === "opened" || e.type === "closed") && /^(49152|62078)(, (49152|62078))?$/.test(e.detail ?? "")) return;
+    log(`${(/* @__PURE__ */ new Date()).toLocaleTimeString()}  ${e.type.padEnd(7)} ${e.ip.padEnd(16)}${e.name ? ` ${e.name}` : ""}${e.detail ? `  ${e.detail}` : ""}`);
   };
   const seen = (ip, mac) => {
     const k = mac?.toUpperCase() || ip;

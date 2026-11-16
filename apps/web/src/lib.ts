@@ -134,9 +134,10 @@ export function realName(d: DeviceReport, saved?: { name?: string }): string | n
   if (own) return own;
   const announced = d.details?.name?.trim();
   if (announced && !/^[0-9a-f]{12,}$/i.test(announced)) return announced;
-  const host = d.hostname?.replace(/\.(home|lan|local|localdomain|internal)$/i, "").trim();
+  // "Ravis-iPhone.local" reads as "Ravis iPhone".
+  const host = d.hostname?.replace(/\.(home|lan|local|localdomain|internal)$/i, "").replace(/[-_]+/g, " ").trim();
   // A hostname that's just the model/chip or a MAC isn't really a name.
-  if (host && !/^(esp|espressif|tuya|localhost|android|amazon|unknown)[-_]?[0-9a-f]*$/i.test(host) && host.length > 1) return host;
+  if (host && !/^(esp|espressif|tuya|localhost|android|amazon|unknown)[-_ ]?[0-9a-f]*$/i.test(host) && host.length > 1) return host;
   return null;
 }
 

@@ -355,3 +355,59 @@ export async function igd(location: string): Promise<{ externalIp?: string; mapp
   }
   return { externalIp, mappings };
 }
+
+/**
+ * Asks one device directly for its own name: a reverse lookup sent straight to the device's
+ * multicast-DNS port. iPhones, iPads, Macs and many Linux boxes answer this with names like
+ * "Ravis-iPhone.local" even when they don't announce any service. Returns undefined if it stays quiet.
+ */
+export function askName(ip: string, timeout = 1200): Promise<string | undefined> {
+  const q = ip.split(".").reverse().join(".") + ".in-addr.arpa";
+  const head = Buffer.alloc(12);
+  head.writeUInt16BE(Math.floor(Math.random() * 0xffff), 0);
+  head.writeUInt16BE(1, 4);
+  const parts: Buffer[] = [head];
+  for (const label of q.split(".")) {
+    const b = Buffer.from(label, "utf8");
+    parts.push(Buffer.from([b.length]), b);
+  }
+  parts.push(Buffer.from([0, 0, 12, 0, 1])); // PTR, IN
+  const packet = Buffer.concat(parts);
+  return new Promise((done) => {
+    const sock = dgram.createSocket("udp4");
+    let over = false;
+    const finish = (v?: string) => {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      try {
+        sock.close();
+      } catch {
+        /* already closed */
+      }
+      done(v);
+    };
+    const timer = setTimeout(() => finish(), timeout);
+    sock.on("error", () => finish());
+    sock.on("message", (msg) => {
+      try {
+        const hit = parseDns(msg).find((r) => r.type === 12 && typeof r.data === "string" && r.data.length > 1);
+        if (hit) finish((hit.data as string).replace(/\.$/, ""));
+      } catch {
+        /* not a DNS answer we understand */
+      }
+    });
+    sock.send(packet, 5353, ip, (e) => e && finish());
+  });
+}
+
+/** Asks many devices for their names, a few dozen at a time. */
+export async function askNames(ips: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < ips.length; i += 48) {
+    const batch = ips.slice(i, i + 48);
+    const got = await Promise.all(batch.map((ip) => askName(ip)));
+    batch.forEach((ip, k) => got[k] && out.set(ip, got[k]!));
+  }
+  return out;
+}

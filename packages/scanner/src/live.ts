@@ -63,7 +63,8 @@ export function fetchResource(target: string, timeout = 4000, limit = 3_000_000)
 const QUICK = [80, 443, 22, 53, 445, 62078, 7000, 8008, 554, 8080];
 
 const keyOf = (d: { mac?: string; ip: string }) => d.mac?.toUpperCase() || d.ip;
-const nameOf = (d?: Device) => d?.details?.name ?? d?.hostname?.replace(/\.(home|lan|local)$/i, "") ?? d?.vendor;
+// The name a device gives itself, never a chip maker.
+const nameOf = (d?: Device) => d?.details?.name ?? d?.hostname?.replace(/\.(home|lan|local)$/i, "").replace(/[-_]+/g, " ");
 
 export type LiveOptions = { cidr: string; self?: string; port: number; every: number; sweepSeconds?: number; log?: (s: string) => void };
 
@@ -77,7 +78,9 @@ export function startLive(o: LiveOptions) {
     const ev = { id: nextId++, at: now(), ...e };
     state.events.push(ev);
     if (state.events.length > 500) state.events.shift();
-    log(`${new Date().toLocaleTimeString()}  ${e.type.padEnd(7)} ${e.name ?? ""} ${e.ip}${e.detail ? `  ${e.detail}` : ""}`);
+    // Phones dozing and waking just open and close their sync ports; that's noise in the window.
+    if ((e.type === "opened" || e.type === "closed") && /^(49152|62078)(, (49152|62078))?$/.test(e.detail ?? "")) return;
+    log(`${new Date().toLocaleTimeString()}  ${e.type.padEnd(7)} ${e.ip.padEnd(16)}${e.name ? ` ${e.name}` : ""}${e.detail ? `  ${e.detail}` : ""}`);
   };
 
   const seen = (ip: string, mac?: string) => {

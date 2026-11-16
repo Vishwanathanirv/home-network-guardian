@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import { promisify } from "node:util";
 import { isPrivate, ipNum, parseArp, type Details, type Device, type Port, type Scan } from "@lamplight/core";
-import { certificate, igd, mdns, netbios, readPage, upnpDescription } from "./discover";
+import { askNames, certificate, igd, mdns, netbios, readPage, upnpDescription } from "./discover";
 import { health } from "./health";
 
 const run = promisify(execFile);
@@ -232,8 +232,9 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
   const [arp, gateway, announced, bonj] = await Promise.all([arpTable(), defaultGateway(), upnp, bonjour]);
   const macs = new Map(arp.filter((a) => inRange.has(a.ip)).map((a) => [a.ip, a]));
   const ips = [...new Set([...alive.keys(), ...macs.keys(), ...[...announced.hints.keys(), ...bonj.keys()].filter((ip) => inRange.has(ip))])];
-  const [names, descs, certs] = await Promise.all([
+  const [names, own, descs, certs] = await Promise.all([
     netbios(ips),
+    askNames(ips),
     Promise.all([...announced.locations].filter(([ip]) => inRange.has(ip)).map(async ([ip, urls]) => [ip, await upnpDescription(urls[0])] as const)),
     Promise.all(ips.flatMap((ip) => (alive.get(ip) ?? []).filter((p) => TLS_PORTS.has(p.port)).map(async (p) => [ip, await certificate(ip, p.port)] as const))),
   ]);
@@ -255,7 +256,8 @@ export async function scanNetwork(o: ScanOptions): Promise<Scan> {
         rtt: rtt.get(ip),
       };
       for (const k of Object.keys(details) as (keyof Details)[]) if (details[k] === undefined || (Array.isArray(details[k]) && !(details[k] as unknown[]).length)) delete details[k];
-      const hostname = macs.get(ip)?.hostname ?? (await reverse(ip)) ?? (b?.host ? `${b.host}.local` : undefined);
+      // Prefer the name the device gives itself, then what the router knows, then what it announced.
+      const hostname = macs.get(ip)?.hostname ?? own.get(ip) ?? (await reverse(ip)) ?? (b?.host ? `${b.host}.local` : undefined);
       return { ip, mac: macs.get(ip)?.mac, hostname, ports, hints, ...(Object.keys(details).length ? { details } : {}) };
     }),
   );
