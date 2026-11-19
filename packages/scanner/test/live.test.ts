@@ -87,11 +87,31 @@ describe("the app built into the scanner", () => {
     expect((await fetch(`${base}/state`)).status).toBe(401);
   });
 
-  it("lets only the hosted app and local pages read it from another address", async () => {
-    const from = async (origin: string) => (await fetch(`${base}/`, { headers: { origin } })).headers.get("access-control-allow-origin");
+  it("lets only the hosted app, its previews and local pages call the data endpoints from another address", async () => {
+    const from = async (origin: string) => (await fetch(`${base}/state`, { headers: { origin } })).headers.get("access-control-allow-origin");
     expect(await from("https://evil.example")).toBeNull();
     expect(await from("https://home-network-guardian.vercel.app")).toBe("https://home-network-guardian.vercel.app");
     expect(await from("https://home-network-guardian-cxcf5mcse-vishwanathanirv-2900.vercel.app")).not.toBeNull();
+    // Anyone can make a Vercel project called home-network-guardian-<anything>; that's not us.
+    expect(await from("https://home-network-guardian-evil.vercel.app")).toBeNull();
+    expect(await from("https://home-network-guardian-x-vishwanathanirv-2900.vercel.app.evil.example")).toBeNull();
+  });
+
+  it("never lets another website read the page that carries the key", async () => {
+    for (const path of ["/", "/index.html", "/device/1"]) {
+      const r = await fetch(`${base}${path}`, { headers: { origin: "https://home-network-guardian.vercel.app" } });
+      expect(r.status).toBe(200);
+      expect(r.headers.get("access-control-allow-origin")).toBeNull();
+    }
+    const pre = await fetch(`${base}/`, { method: "OPTIONS", headers: { origin: "https://home-network-guardian.vercel.app", "access-control-request-private-network": "true" } });
+    expect(pre.headers.get("access-control-allow-origin")).toBeNull();
+    expect(pre.headers.get("access-control-allow-private-network")).toBeNull();
+  });
+
+  it("rejects a key that is wrong, shorter or longer", async () => {
+    for (const k of [live.key.slice(0, -1), `${live.key}0`, live.key.replace(/./, (c) => (c === "a" ? "b" : "a")), ""])
+      expect((await fetch(`${base}/state`, { headers: { authorization: `Bearer ${k}` } })).status).toBe(401);
+    expect((await fetch(`${base}/state`, { headers: { authorization: `Bearer ${live.key}` } })).status).toBe(200);
   });
 
   it("refuses a page that reached it under another name (DNS rebinding)", async () => {

@@ -165,3 +165,24 @@ describe("known-vulnerability (CVE) matches from version banners", () => {
     expect(issue({ port: 22, proto: "tcp", product: "Dropbear sshd", version: "2020.81" })).toBeUndefined();
   });
 });
+
+describe("scan files from elsewhere can't smuggle in a fake address", () => {
+  it("only treats real private IPv4 addresses as private", async () => {
+    const { isPrivate, isIp } = await import("../src");
+    expect(isPrivate("192.168.1.10")).toBe(true);
+    expect(isPrivate("10.0.0.1")).toBe(true);
+    expect(isPrivate("10.evil.example")).toBe(false);
+    expect(isPrivate("192.168.1.10@evil.example")).toBe(false);
+    expect(isPrivate("192.168.1.300")).toBe(false);
+    expect(isPrivate("8.8.8.8")).toBe(false);
+    expect(isIp("fe80::1")).toBe(true);
+    expect(isIp("evil.example/x")).toBe(false);
+  });
+
+  it("drops devices whose address isn't an IP address", () => {
+    const j = JSON.stringify({ devices: [{ ip: "192.168.1.5", ports: [] }, { ip: "evil.example", ports: [] }, { ip: "192.168.1.6/x", ports: [] }] });
+    expect(parseAny(j).devices.map((d) => d.ip)).toEqual(["192.168.1.5"]);
+    const xml = `<nmaprun><host><status state="up"/><address addr="phish.example" addrtype="ipv4"/></host><host><status state="up"/><address addr="192.168.1.9" addrtype="ipv4"/></host></nmaprun>`;
+    expect(parseNmap(xml).devices.map((d) => d.ip)).toEqual(["192.168.1.9"]);
+  });
+});

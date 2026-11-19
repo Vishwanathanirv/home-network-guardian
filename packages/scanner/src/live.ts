@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import { gunzipSync, gzipSync } from "node:zlib";
 import https from "node:https";
@@ -80,8 +80,23 @@ export function lagSpike(history: { internetMs?: number }[], ms?: number): { ms:
   return ms > usual * 3 && ms > usual + 80 ? { ms: Math.round(ms), usual: Math.round(usual) } : undefined;
 }
 
-/** Pages that may read the scanner from another address: the hosted app (and its previews), and local development. */
-const ALLOWED_ORIGIN = /^(https:\/\/home-network-guardian(-[\w-]+)?\.vercel\.app|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
+/**
+ * Pages that may call the scanner's data endpoints from another address: the hosted app, its own
+ * preview builds (which always end in the project owner's team suffix, so another Vercel project
+ * named "home-network-guardian-something" doesn't match), and local development.
+ */
+export const ALLOWED_ORIGIN = /^(https:\/\/home-network-guardian(-[a-z0-9-]+)?-vishwanathanirv-2900\.vercel\.app|https:\/\/home-network-guardian\.vercel\.app|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
+
+/** The data endpoints. Only these ever get CORS headers: the site's own files (whose page holds the key) never do. */
+const API = new Set(["/state", "/scan", "/fetch"]);
+
+/** Compares the key in constant time, so its characters can't be guessed one by one from response timing. */
+export function keyMatches(given: string | null | undefined, key: string) {
+  if (!given) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(key);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 /** A copy of the built-in site whose page carries this session's key. */
 function withKey(files: SiteFiles, port: number, key: string): SiteFiles {
@@ -244,23 +259,27 @@ export function startLive(o: LiveOptions) {
   const site = o.site && withKey(o.site, o.port, key);
   const server = http.createServer((req, res) => {
     if (!localHost(req, o.port)) return res.writeHead(421, { "content-type": "text/plain" }).end("Open Lamplight at http://127.0.0.1 on this computer.");
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const origin = req.headers.origin;
     res.setHeader("Vary", "Origin");
-    if (origin && ALLOWED_ORIGIN.test(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    if (req.headers["access-control-request-private-network"]) res.setHeader("Access-Control-Allow-Private-Network", "true");
+    // Another website must never read the page this serves: it carries the key. So the
+    // cross-origin grant is given for the data endpoints only, and only to the allow-list.
+    if (API.has(url.pathname) && origin && ALLOWED_ORIGIN.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      if (req.headers["access-control-request-private-network"]) res.setHeader("Access-Control-Allow-Private-Network", "true");
+    }
     if (req.method === "OPTIONS") return res.writeHead(204).end();
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
     // The whole website, served from this computer. It holds nothing private; the data below needs the key.
-    if (site?.size && !["/state", "/scan", "/fetch"].includes(url.pathname) && serveSite(site, req, res, url.pathname)) return;
+    if (site?.size && !API.has(url.pathname) && serveSite(site, req, res, url.pathname)) return;
     if (site?.size && /\.[a-z0-9]+$/i.test(url.pathname)) return res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
     if (url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(`<!doctype html><meta charset="utf-8"><title>Lamplight live</title><body style="font:16px system-ui;background:#0b1116;color:#e5ebef;padding:2rem">Lamplight live is running and watching ${o.cidr}. Open the link printed in your terminal.`);
     }
     const auth = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("key");
-    if (auth !== key) {
+    if (!keyMatches(auth, key)) {
       res.writeHead(401, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: "Wrong or missing key. Use the link printed in the terminal." }));
     }

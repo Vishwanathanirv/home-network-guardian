@@ -42,7 +42,8 @@ export function parseNmap(xml: string): Scan {
     if (kid(h, "status")?.attrs.state === "down") continue;
     const addrs = kids(h, "address");
     const ip = addrs.find((a) => a.attrs.addrtype === "ipv4")?.attrs.addr ?? addrs.find((a) => a.attrs.addrtype === "ipv6")?.attrs.addr;
-    if (!ip) continue;
+    // A scan file can come from anywhere; an "address" that isn't one never reaches a link.
+    if (!ip || !isIp(ip)) continue;
     const macEl = addrs.find((a) => a.attrs.addrtype === "mac");
     const ports: Port[] = [];
     for (const p of kids(kid(h, "ports"), "port")) {
@@ -77,7 +78,7 @@ export function parseArp(text: string): Scan {
   for (const line of text.split(/\r?\n/)) {
     const ip = line.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/)?.[1];
     const mac = line.match(/\b([0-9a-f]{1,2}(?:[:-][0-9a-f]{1,2}){5})\b/i)?.[1];
-    if (!ip || !mac || /incomplete|FAILED/i.test(line)) continue;
+    if (!ip || !isIpv4(ip) || !mac || /incomplete|FAILED/i.test(line)) continue;
     const norm = mac
       .split(/[:-]/)
       .map((b) => b.padStart(2, "0"))
@@ -102,7 +103,7 @@ export function parseAny(text: string): Scan {
       throw new Error("This looks like JSON but couldn't be read.");
     }
     if (!Array.isArray(j.devices)) throw new Error("This JSON isn't a Lamplight scan (no devices list).");
-    return { ...j, devices: j.devices.filter((d) => typeof d.ip === "string").map((d) => ({ ...d, ports: Array.isArray(d.ports) ? d.ports : [] })) };
+    return { ...j, devices: j.devices.filter((d) => typeof d.ip === "string" && isIp(d.ip)).map((d) => ({ ...d, ports: Array.isArray(d.ports) ? d.ports : [] })) };
   }
   if (t.startsWith("<")) return parseNmap(t);
   return parseArp(t);
@@ -111,8 +112,14 @@ export function parseAny(text: string): Scan {
 export const ipNum = (ip: string) => ip.split(".").reduce((n, o) => n * 256 + +o, 0);
 export const byIp = (a: Device, b: Device) => ipNum(a.ip) - ipNum(b.ip);
 
+/** A plain dotted IPv4 address, each part 0-255 (no host names, ports or paths hiding inside). */
+export const isIpv4 = (ip: string) => /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(ip);
+/** An IP address a scan may contain: IPv4, or IPv6 written with hex digits and colons only. */
+export const isIp = (ip: string) => isIpv4(ip) || (/^[0-9a-f:]{2,39}$/i.test(ip) && ip.includes(":"));
+
 /** True for addresses that only exist inside a home or office network. */
 export function isPrivate(ip: string) {
+  if (!isIpv4(ip)) return false;
   const [a, b] = ip.split(".").map(Number);
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }

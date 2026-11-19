@@ -1,5 +1,5 @@
 export * from "./types";
-export { parseAny, parseArp, parseNmap, parseXml, isPrivate, ipNum } from "./parse";
+export { parseAny, parseArp, parseNmap, parseXml, isPrivate, isIp, isIpv4, ipNum } from "./parse";
 export { setOui, vendorOf, isRandomMac, type OuiTable } from "./oui";
 export { classify, KIND_NAME } from "./classify";
 export { analyse, checkDevice, guessGateway, isCgnat, serviceName, SERVICE, wifiVerdict, type DeviceReport, type Report } from "./checks";
