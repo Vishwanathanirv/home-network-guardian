@@ -1481,6 +1481,7 @@ async function internetCheck(gateway, locations, router) {
 function siteFiles(raw) {
   return new Map(Object.entries(raw).map(([path, [type, b64]]) => [path, { type, body: Buffer.from(b64, "base64") }]));
 }
+var CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 function serveSite(files, req, res, pathname) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
   const want = decodeURIComponent(pathname).replace(/^\/+/, "");
@@ -1492,7 +1493,9 @@ function serveSite(files, req, res, pathname) {
     "content-length": file.body.length,
     "cache-control": want.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store",
     "x-content-type-options": "nosniff",
-    "referrer-policy": "no-referrer"
+    "referrer-policy": "no-referrer",
+    "content-security-policy": CSP,
+    "x-frame-options": "DENY"
   });
   res.end(req.method === "HEAD" ? void 0 : file.body);
   return true;

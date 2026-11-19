@@ -83,6 +83,15 @@ describe("the app built into the scanner", () => {
     expect((await fetch(`${base}/missing.js`)).status).toBe(404);
   });
 
+  it("serves the site with the same security policy as the hosted app", async () => {
+    const { readFileSync } = await import("node:fs");
+    const vercel = JSON.parse(readFileSync(new URL("../../../vercel.json", import.meta.url), "utf8"));
+    const hosted = vercel.headers[0].headers.find((h: { key: string }) => h.key === "Content-Security-Policy").value;
+    const r = await fetch(`${base}/`);
+    expect(r.headers.get("content-security-policy")).toBe(hosted);
+    expect(r.headers.get("x-frame-options")).toBe("DENY");
+  });
+
   it("still keeps the scan data behind the key", async () => {
     expect((await fetch(`${base}/state`)).status).toBe(401);
   });

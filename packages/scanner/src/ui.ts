@@ -11,6 +11,10 @@ export function siteFiles(raw: Record<string, [string, string]>): SiteFiles {
   return new Map(Object.entries(raw).map(([path, [type, b64]]) => [path, { type, body: Buffer.from(b64, "base64") }]));
 }
 
+/** The same Content-Security-Policy the hosted site sends (vercel.json): only this app's own code runs. */
+export const CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
 /** Serves one file of the built-in site. Any page path without a file falls back to the app. */
 export function serveSite(files: SiteFiles, req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
@@ -24,6 +28,8 @@ export function serveSite(files: SiteFiles, req: IncomingMessage, res: ServerRes
     "cache-control": want.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store",
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
+    "content-security-policy": CSP,
+    "x-frame-options": "DENY",
   });
   res.end(req.method === "HEAD" ? undefined : file.body);
   return true;

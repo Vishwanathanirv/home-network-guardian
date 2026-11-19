@@ -3,6 +3,25 @@ import { expect, test, type Page } from "@playwright/test";
 const onPlan = (page: Page, name: string) => page.getByRole("button", { name: new RegExp(`^${name},`) });
 const details = (page: Page) => page.getByRole("region", { name: "Details" });
 
+// Every flow runs under the production Content-Security-Policy (the preview server sends
+// vercel.json's headers); anything it blocks fails the test.
+const blocked = new WeakMap<Page, string[]>();
+test.beforeEach(({ page }) => {
+  const list: string[] = [];
+  blocked.set(page, list);
+  page.on("console", (m) => /Content.Security.Policy|Refused to/i.test(m.text()) && list.push(m.text()));
+});
+test.afterEach(({ page }) => expect(blocked.get(page) ?? []).toEqual([]));
+
+test("the site is served with strict security headers", async ({ page }) => {
+  const r = await page.goto("/");
+  const h = r!.headers();
+  expect(h["content-security-policy"]).toContain("script-src 'self'");
+  expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(h["x-content-type-options"]).toBe("nosniff");
+  expect(h["referrer-policy"]).toBe("no-referrer");
+});
+
 test("the example home fills the screen and lists what to fix tonight", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /17 devices are home\. 6 need you tonight\. 2 are new\./ })).toBeVisible();
