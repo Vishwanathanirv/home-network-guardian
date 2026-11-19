@@ -2,7 +2,7 @@
 // Bundles the scanner into one file and builds the website into it, so `lamplight live`
 // serves the whole app from your own computer.
 import { build } from "esbuild";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -59,6 +59,8 @@ await build({
 
 mkdirSync(join(root, "scanner"), { recursive: true });
 copyFileSync(join(pkg, "dist/lamplight.cjs"), join(root, "scanner/lamplight.cjs"));
+// copyFileSync keeps the source's mode; the committed scanner must stay executable (and match git exactly).
+chmodSync(join(root, "scanner/lamplight.cjs"), 0o755);
 for (const f of ["lamplight.cjs", "lamplight-windows.cmd", "lamplight-mac.command"])
   if (existsSync(join(root, "scanner", f))) copyFileSync(join(root, "scanner", f), join(root, "apps/web/public", f));
 const kb = Math.round(statSync(join(pkg, "dist/lamplight.cjs")).size / 1024);

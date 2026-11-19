@@ -21,7 +21,9 @@
     "typecheck": "tsc -p packages/core && tsc -p packages/scanner && tsc -p apps/web",
     "lint": "eslint .",
     "build:demo": "npm run build -w apps/web",
-    "test:e2e": "npm run build:demo && playwright test"
+    "test:e2e": "npm run build:demo && playwright test",
+    "pretypecheck": "npm run oui --silent",
+    "pretest": "npm run oui --silent"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
