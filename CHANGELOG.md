@@ -15,6 +15,7 @@ All notable changes. Dates are UTC.
 - CI had failed on every push since 0477125: the build wrote the committed scanner without its executable bit. The build now keeps it executable.
 - `npm run typecheck` and `npm test` generate the vendor table first, so they work on a fresh clone.
 - Every end-to-end test runs under the production Content-Security-Policy and fails if the policy blocks anything.
+- Ctrl K focuses its search the moment it opens; the first keys typed were being dropped (and the e2e test was flaky).
 
 ### Product
 - Network page: the router and internet speeds are drawn as one beam of light (you, the router, the internet) instead of four tiles, and the three stat cards are one sentence.
