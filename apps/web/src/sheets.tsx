@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { KIND_NAME, serviceName, SEVERITY_RANK, type Change, type DeviceReport, type Issue, type Severity } from "@lamplight/core";
 import { displayName, issueKey, keyOf, roomFor, ROOMS, toggleDone, useDone, useHome, usePlaces } from "./lib";
@@ -182,8 +182,21 @@ export function HomeSheet({ onPick, compact }: { onPick: (ip: string) => void; c
                 </span>
                 {left.length === 0 && <span className="text-ok">All done</span>}
               </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[color-mix(in_oklab,var(--ink)_10%,transparent)]">
-                <div className="h-full rounded-full bg-ok transition-[width] duration-500" style={{ width: `${(finished.length / todo.length) * 100}%` }} />
+              {/* One lamp per fix: it lights up when you tick the problem off. Most urgent first. */}
+              <div
+                className="lamps mt-2"
+                role="progressbar"
+                aria-label="Problems fixed"
+                aria-valuemin={0}
+                aria-valuemax={todo.length}
+                aria-valuenow={finished.length}
+                aria-valuetext={`${finished.length} of ${todo.length} fixed`}
+              >
+                {[...todo]
+                  .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
+                  .map((i) => (
+                    <span key={keyFor(i)} className={`lamp${done[keyFor(i)] ? " lit" : ""}`} style={{ "--tone": toneOf(i.severity) } as CSSProperties} />
+                  ))}
               </div>
             </div>
           )}

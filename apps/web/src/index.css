@@ -582,3 +582,31 @@ body {
     animation: none;
   }
 }
+
+/* The to-do list as a string of lamps: a dark one is still to fix (rimmed in how urgent it is), a lit one is done. */
+.lamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lamp {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in oklab, var(--tone) 70%, transparent);
+  background: color-mix(in oklab, var(--ink) 6%, transparent);
+  transition:
+    background 0.4s,
+    box-shadow 0.4s,
+    border-color 0.4s;
+}
+.lamp.lit {
+  border-color: #ffd98a;
+  background: #ffd98a;
+  box-shadow: 0 0 0.55rem 0.1rem color-mix(in oklab, #ffd98a 55%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lamp {
+    transition: none;
+  }
+}

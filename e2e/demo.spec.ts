@@ -32,6 +32,10 @@ test("the example home fills the screen and lists what to fix tonight", async ({
   // Ticking a problem off updates the headline and the device's badge on the plan.
   await details(page).getByRole("button", { name: "Done: Android debugging is open to the network" }).click();
   await expect(page.getByRole("heading", { name: /5 need you tonight/ })).toBeVisible();
+  // Each fix lights one lamp in the string.
+  const lamps = page.getByRole("progressbar", { name: "Problems fixed" });
+  await expect(lamps).toHaveAttribute("aria-valuenow", "1");
+  await expect(lamps.locator(".lamp.lit")).toHaveCount(1);
   await expect(onPlan(page, "Living Room TV")).toHaveAttribute("aria-label", /fine/);
 });
 
