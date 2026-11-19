@@ -1,5 +1,27 @@
 # Lamplight · Who's on your home network
 
+**[Live demo →](https://home-network-guardian.vercel.app)** (a synthetic example home; nothing to install)
+
+**The problem.** A typical home now has more connected gadgets than anyone can name, and the risky ones (a camera with Telnet and a factory password, a TV box with debugging left on, a router punching holes to the internet) look exactly like the safe ones. Network scanners can find all of this, but they answer in port numbers.
+
+**Who it's for.** The person who looks after the family Wi-Fi, not a security engineer.
+
+**Why it's different.**
+- **A picture, not a port list.** Your home is a night sky (the router is the bright core, every device a star) or a floor plan of your house. Risky devices burn amber or red, unknown ones wait on the doorstep, and every fix comes in plain English with a "tonight / this week" urgency.
+- **Nothing leaves your computer.** The scanner is one dependency-free file that serves the whole app from `127.0.0.1`. Scan data sits behind a per-session key, the page refuses DNS-rebinding, and no other website can read it.
+- **Proves, doesn't guess.** Read-only checks confirm the worst problems (a camera stream with no password, anonymous FTP, SMBv1) and mark them **Checked**; version-based CVE matches are marked **Possible**.
+
+**Measured, not estimated** (the demo build served locally by `vite preview`, so no internet latency; headless Chromium on a cloud Linux machine; median of 7 cold loads; reproduce with `npm run measure`):
+
+| | Fast machine | 4× CPU slowdown |
+|---|---|---|
+| First paint | 212 ms | 468 ms |
+| Home headline on screen | 224 ms | 710 ms |
+| Transferred on first visit | 533 KB | 533 KB |
+
+The app's JavaScript is 139 KB gzipped; the vendor table behind it covers 40,497 MAC prefixes from the IEEE registry. 65 unit tests and 12 end-to-end tests run on every push, the end-to-end ones under the production Content-Security-Policy.
+
+## What it is
 
 Lamplight shows every device on your home network on a **floor plan of your house**. Risky devices glow red or amber, new ones get a ring, and anything nobody recognises waits **on the doorstep**. Tap a device to see what it is, why Lamplight thinks so, and exactly what to do, in plain English written for the person who looks after the family Wi-Fi rather than a security engineer.
 
