@@ -38,6 +38,8 @@ export function Palette({ open, onClose, actions, devices, onPick }: { open: boo
       <div className="glass rise w-full max-w-[34rem] overflow-hidden rounded-2xl" role="dialog" aria-modal="true" aria-label="Go to">
         <input
           ref={input}
+          // Focus as soon as it appears, so the first keys typed after Ctrl K aren't lost.
+          autoFocus
           value={q}
           onChange={(e) => {
             setQ(e.target.value);

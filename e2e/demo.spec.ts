@@ -166,6 +166,7 @@ test("the table view sorts every device, and Ctrl K jumps anywhere", async ({ pa
   await table.getByRole("button", { name: /^Address/ }).click();
   await expect(table.locator("tbody tr").first()).toContainText("192.168.1.1");
   await page.keyboard.press("Control+k");
+  await expect(page.getByRole("combobox", { name: "Go to a device or do something" })).toBeFocused();
   await page.keyboard.type("officejet");
   await page.keyboard.press("Enter");
   await expect(details(page).getByRole("heading", { name: /OfficeJet Pro 9010/ })).toBeVisible();
