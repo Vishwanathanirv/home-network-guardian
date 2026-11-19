@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router";
 import { isCgnat, isPrivate, KIND_NAME, serviceName, wifiVerdict, type DeviceReport, type Internet, type Kind, type Report } from "@lamplight/core";
 import { ScoreRing } from "./device";
@@ -60,28 +60,51 @@ const rate = (ms: number | undefined, good: number, ok: number) => (ms === undef
 function InternetPanel({ net, report, onPick, name }: { net?: Internet; report: Report; onPick: (ip: string) => void; name: (d: DeviceReport) => string }) {
   const [show, setShow] = useState(false);
   if (!net) return <p className="text-[13.5px] text-muted">Scan with the Lamplight scanner to see your connection's speed, whether its DNS is honest, and which doors your router opened to the internet.</p>;
-  const tiles = [
-    ["Router", ...rate(net.routerMs, 5, 20)],
-    ["Internet", ...rate(net.internetMs, 40, 120)],
-    ["Steadiness", ...(net.jitterMs === undefined ? ["–", "unknown", "var(--faint)"] : net.jitterMs <= 5 ? [`±${net.jitterMs} ms`, "steady", "var(--ok)"] : net.jitterMs <= 20 ? [`±${net.jitterMs} ms`, "a bit jumpy", "var(--warn)"] : [`±${net.jitterMs} ms`, "jumpy: calls may stutter", "var(--risk)"])],
-    ["Name lookups", ...rate(net.dnsMs, 40, 150)],
+  const hops = [
+    { from: "This computer", to: "Router", r: rate(net.routerMs, 5, 20) },
+    { from: "Router", to: "The internet", r: rate(net.internetMs, 40, 120) },
   ];
+  const steady = net.jitterMs === undefined ? undefined : net.jitterMs <= 5 ? ["steady", "var(--ok)"] : net.jitterMs <= 20 ? ["a bit jumpy", "var(--warn)"] : ["jumpy: calls may stutter", "var(--risk)"];
+  const dns = rate(net.dnsMs, 40, 150);
   const ip = net.externalIp;
   const shared = !!ip && (isCgnat(ip) || isPrivate(ip));
   const maps = net.mappings ?? [];
   return (
     <div>
-      <dl className="grid grid-cols-2 gap-2">
-        {tiles.map(([k, v, word, tone]) => (
-          <div key={k} className="rounded-xl border border-line p-2.5">
-            <dt className="text-[12px] font-semibold text-faint">{k}</dt>
-            <dd className="text-[16px] font-bold tabular-nums">{v}</dd>
-            <dd className="text-[12px] font-semibold" style={{ color: tone }}>
-              {word}
-            </dd>
-          </div>
+      {/* The way out of the house, drawn as a beam of light: each stretch glows the colour of how fast it is. */}
+      <ol className="beam" aria-label="How fast the way out of your home is">
+        <li className="beam-stop" aria-hidden>
+          <span className="beam-lamp" />
+          <span>You</span>
+        </li>
+        {hops.map(({ from, to, r: [v, word, tone] }) => (
+          <li key={to} className="contents">
+            <span className="beam-run" style={{ "--tone": tone } as CSSProperties}>
+              <span className="sr-only">{from} to {to.toLowerCase()}: </span>
+              <b className="tabular-nums">{v}</b>
+              <span style={{ color: tone }}>{word}</span>
+            </span>
+            <span className="beam-stop" aria-hidden>
+              <span className={`beam-lamp ${to === "Router" ? "router" : "sky"}`} />
+              <span>{to === "Router" ? "Router" : "Internet"}</span>
+            </span>
+          </li>
         ))}
-      </dl>
+      </ol>
+      <p className="mt-2 text-[13px] text-muted">
+        {steady ? (
+          <>
+            The light holds <span className="font-semibold" style={{ color: steady[1] }}>{steady[0]}</span> (±{net.jitterMs} ms)
+          </>
+        ) : (
+          "Steadiness unknown"
+        )}
+        {", and names of websites are found in "}
+        <span className="font-semibold tabular-nums" style={{ color: dns[2] }}>
+          {dns[0]}
+        </span>
+        {dns[0] === "–" ? "" : ` (${dns[1]})`}.
+      </p>
       <dl className="mt-3 grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px]">
         {ip && (
           <>
@@ -185,19 +208,15 @@ export function NetworkSheet({ onClose, onPick }: { onClose: () => void; onPick:
         </div>
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-        {[
-          [String(report.devices.length), "devices"],
-          [String(report.devices.reduce((n, d) => n + d.ports.length, 0)), "open services"],
-          [rtts.length ? `${Math.round(rtts.sort((a, b) => a - b)[Math.floor(rtts.length / 2)])} ms` : "–", "typical response"],
-        ].map(([v, l]) => (
-          <div key={l} className="rounded-xl border border-line py-2">
-            <dt className="sr-only">{l}</dt>
-            <dd className="text-[17px] font-bold tabular-nums">{v}</dd>
-            <dd className="text-[11.5px] font-semibold text-faint">{l}</dd>
-          </div>
-        ))}
-      </dl>
+      <p className="mt-3 text-[14px] leading-relaxed text-muted">
+        <b className="text-ink tabular-nums">{report.devices.length}</b> lights are on in this home, with <b className="text-ink tabular-nums">{report.devices.reduce((n, d) => n + d.ports.length, 0)}</b> services answering
+        {rtts.length ? (
+          <>
+            ; a typical one replies in <b className="text-ink tabular-nums">{Math.round([...rtts].sort((a, b) => a - b)[Math.floor(rtts.length / 2)])} ms</b>
+          </>
+        ) : null}
+        .
+      </p>
 
       <Section title="The internet side">
         <InternetPanel net={report.scan.internet} report={report} onPick={onPick} name={name} />

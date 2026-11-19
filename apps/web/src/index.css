@@ -507,3 +507,78 @@ body {
     opacity: 0;
   }
 }
+
+/* The way out of the house, drawn as a beam of light from your lamp to the sky. */
+.beam {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 1.1rem 0 0;
+}
+.beam-stop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.85rem;
+  width: 3.4rem;
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--faint);
+}
+.beam-lamp {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: #ffd98a;
+  box-shadow: 0 0 0.7rem 0.15rem color-mix(in oklab, #ffd98a 55%, transparent);
+}
+.beam-lamp.router {
+  background: var(--accent);
+  box-shadow: 0 0 0.7rem 0.15rem color-mix(in oklab, var(--accent) 55%, transparent);
+}
+.beam-lamp.sky {
+  background: radial-gradient(circle, #fff 0 25%, #c9dcff 26% 55%, transparent 56%);
+  box-shadow: 0 0 0.9rem 0.25rem color-mix(in oklab, #c9dcff 45%, transparent);
+}
+.beam-run {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: -0.95rem;
+  padding-bottom: 0.9rem;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+.beam-run b {
+  font-size: 15px;
+  color: var(--ink);
+}
+.beam-run::after {
+  content: "";
+  position: absolute;
+  left: -0.4rem;
+  right: -0.4rem;
+  top: 2.25rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--tone) 35%, transparent), var(--tone), color-mix(in oklab, var(--tone) 35%, transparent));
+  background-size: 200% 100%;
+  box-shadow: 0 0 0.5rem color-mix(in oklab, var(--tone) 60%, transparent);
+  animation: beam 2.6s linear infinite;
+}
+@keyframes beam {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .beam-run::after {
+    animation: none;
+  }
+}

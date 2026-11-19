@@ -94,6 +94,12 @@ test("the network page grades the whole home, and the scan page has the commands
   await page.goto("/network");
   await expect(details(page).getByText(/Safety grade [A-F]/)).toBeVisible();
   await expect(details(page).getByText("Archer C6 v2 by TP-Link", { exact: false })).toBeVisible();
+  // The way out is one beam of light: you, the router, the internet, each stretch with its speed.
+  const beam = details(page).getByRole("list", { name: "How fast the way out of your home is" });
+  await expect(beam.getByText("Router to the internet:")).toBeAttached();
+  await expect(beam).toContainText("2.1 ms");
+  await expect(beam).toContainText("18.4 ms");
+  await expect(details(page).getByText(/17\s*lights are on in this home/)).toBeVisible();
   const download = page.waitForEvent("download");
   await details(page).getByRole("button", { name: "Download the report" }).click();
   expect((await download).suggestedFilename()).toMatch(/^lamplight-report-.*\.md$/);
