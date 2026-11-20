@@ -25,6 +25,16 @@ const TYPES = {
   ".txt": "text/plain; charset=utf-8",
   ".webmanifest": "application/manifest+json",
 };
+/**
+ * Gzip with a fixed header, so the scanner is byte-identical whichever OS builds it: zlib writes the
+ * building OS into header byte 9 (0x0a on Windows, 0x03 on Unix), which CI's "committed scanner
+ * matches the source" check would otherwise trip over.
+ */
+const gzip = (buf) => {
+  const z = gzipSync(buf, { level: 9 });
+  z[9] = 3;
+  return z;
+};
 const walk = (d) => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
 
 const files = {};
@@ -32,7 +42,7 @@ if (existsSync(join(dist, "index.html"))) {
   for (const f of walk(dist)) {
     const rel = relative(dist, f).split(sep).join("/");
     if (SKIP.test(rel)) continue;
-    files[rel] = [TYPES[extname(f)] ?? "application/octet-stream", gzipSync(readFileSync(f), { level: 9 }).toString("base64")];
+    files[rel] = [TYPES[extname(f)] ?? "application/octet-stream", gzip(readFileSync(f)).toString("base64")];
   }
 } else console.warn("No built website found (run the web build first); the scanner will point to the hosted site instead.");
 
