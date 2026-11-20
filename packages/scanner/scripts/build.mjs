@@ -2,7 +2,8 @@
 // Bundles the scanner into one file and builds the website into it, so `lamplight live`
 // serves the whole app from your own computer.
 import { build } from "esbuild";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -71,7 +72,11 @@ mkdirSync(join(root, "scanner"), { recursive: true });
 copyFileSync(join(pkg, "dist/lamplight.cjs"), join(root, "scanner/lamplight.cjs"));
 // copyFileSync keeps the source's mode; the committed scanner must stay executable (and match git exactly).
 chmodSync(join(root, "scanner/lamplight.cjs"), 0o755);
-for (const f of ["lamplight.cjs", "lamplight-windows.cmd", "lamplight-mac.command"])
+// The checksum the site shows next to the download command, in `sha256sum -c` format.
+const sha = createHash("sha256").update(readFileSync(join(root, "scanner/lamplight.cjs"))).digest("hex");
+writeFileSync(join(root, "scanner/lamplight.cjs.sha256"), `${sha}  lamplight.cjs
+`);
+for (const f of ["lamplight.cjs", "lamplight.cjs.sha256", "lamplight-windows.cmd", "lamplight-mac.command"])
   if (existsSync(join(root, "scanner", f))) copyFileSync(join(root, "scanner", f), join(root, "apps/web/public", f));
 const kb = Math.round(statSync(join(pkg, "dist/lamplight.cjs")).size / 1024);
-console.log(`Built the scanner (${kb} KB) with ${Object.keys(files).length} website files inside.`);
+console.log(`Built the scanner (${kb} KB) with ${Object.keys(files).length} website files inside. SHA-256 ${sha}`);

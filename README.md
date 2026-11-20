@@ -96,7 +96,7 @@ Then choose the file, or paste the text. It is read in your browser and stored o
 
 ## The scanner
 
-`scanner/lamplight.cjs` is a single file with no dependencies, built from `packages/scanner`.
+`scanner/lamplight.cjs` is a single file with no dependencies, built from `packages/scanner`. Every build also writes `scanner/lamplight.cjs.sha256`; the site serves both, shows the fingerprint next to the download command, and gives a one-line check for Windows, macOS and Linux. The build is byte-identical on every OS, so anyone can rebuild it and compare.
 
 ```bash
 node lamplight.cjs networks                        # which networks this computer is on

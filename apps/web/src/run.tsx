@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { analyse, DEMO_XML_TONIGHT, isPrivate, parseAny } from "@lamplight/core";
 import { CopyButton } from "./device";
@@ -117,6 +117,45 @@ export function Cmd({ os, children }: { os: Os; children: string }) {
   );
 }
 
+/** The scanner's SHA-256, published by the build next to the file. One request per page load. */
+let shaRequest: Promise<string | null> | null = null;
+function useScannerSha(): string | null {
+  const [sha, setSha] = useState<string | null>(null);
+  useEffect(() => {
+    shaRequest ??= fetch(`${RAW}.sha256`, { cache: "no-cache" })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((t) => t.match(/^[0-9a-f]{64}/)?.[0] ?? null)
+      .catch(() => null);
+    let live = true;
+    void shaRequest.then((v) => live && setSha(v));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return sha;
+}
+
+/** One command that says whether the downloaded scanner is byte-for-byte the one this site publishes. */
+export function verifyCommand(os: Os, sha: string): string {
+  if (os === "windows") return `certutil -hashfile lamplight.cjs SHA256 | find /i "${sha}" && echo The scanner is genuine.`;
+  return `echo "${sha}  lamplight.cjs" | ${os === "mac" ? "shasum -a 256 -c" : "sha256sum -c"}`;
+}
+
+function VerifyScanner({ os }: { os: Os }) {
+  const sha = useScannerSha();
+  if (!sha) return null;
+  return (
+    <details className="mt-1.5 text-[12.5px] text-faint">
+      <summary className="cursor-pointer select-none font-semibold text-accent">Check it's the real file (optional)</summary>
+      <p className="mt-1 leading-relaxed">
+        This compares the file you downloaded with the SHA-256 fingerprint this site publishes. {os === "windows" ? `It prints the fingerprint and "The scanner is genuine." if they match, and nothing if they don't.` : 'It prints "lamplight.cjs: OK" if they match.'}
+      </p>
+      <Cmd os={os}>{verifyCommand(os, sha)}</Cmd>
+      <p className="mt-1 break-all font-mono text-[11.5px]">SHA-256 {sha}</p>
+    </details>
+  );
+}
+
 function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <li className="flex gap-3">
@@ -193,6 +232,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
           <li>
             <span className="font-semibold text-ink">2. Get the scanner</span> (only the first time):
             <Cmd os={os}>{`${os === "windows" ? "curl.exe" : "curl"} -L -o lamplight.cjs ${RAW}`}</Cmd>
+            <VerifyScanner os={os} />
           </li>
           <li>
             <span className="font-semibold text-ink">3. Start it.</span> It finds your own network, scans it, and opens Lamplight in your browser, served from your own computer, updating live.
@@ -273,6 +313,7 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
         <Step n={2} title="Download the scanner">
           One file, no install. It saves next to where your terminal is.
           <Cmd os={os}>{`${os === "windows" ? "curl.exe" : "curl"} -L -o lamplight.cjs ${RAW}`}</Cmd>
+            <VerifyScanner os={os} />
         </Step>
         <Step n={3} title="Find your network">
           This lists the networks your computer is on and marks the one with your router. Virtual ones (VirtualBox, VMware, WSL, Docker) are skipped.
