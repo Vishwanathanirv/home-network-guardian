@@ -230,10 +230,7 @@ export function HomeSheet({ onPick, compact }: { onPick: (ip: string) => void; c
             </Section>
           )}
           <p className="mt-6 text-[12.5px] leading-relaxed text-faint">
-            {now.demo ? "The example home is made up. " : ""}Your scans stay on your computer. Vendor names from the IEEE OUI registry.{" "}
-            <a href="https://github.com/Vishwanathanirv/home-network-guardian" className="underline underline-offset-2">
-              Source
-            </a>
+            {now.demo ? "The example home is made up. " : ""}Your scans stay on your computer. Vendor names from the IEEE OUI registry.
           </p>
         </>
       )}

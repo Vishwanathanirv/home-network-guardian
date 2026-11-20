@@ -5,7 +5,9 @@ import { CopyButton } from "./device";
 import { addScan, removeScan, setActive, useActive, useScans } from "./lib";
 import { Section, SubHeader } from "./sheets";
 
-const RAW_BASE = "https://raw.githubusercontent.com/Vishwanathanirv/home-network-guardian/main/scanner";
+/** The scanner is served by this site itself (apps/web/public), so the download never leaves Lamplight. */
+const SITE = typeof location === "undefined" ? "https://home-network-guardian.vercel.app" : location.origin;
+const RAW_BASE = SITE;
 const RAW = `${RAW_BASE}/lamplight.cjs`;
 const LAUNCHER: Record<Os, { file: string; name: string }> = {
   windows: { file: "lamplight-windows.cmd", name: "Windows launcher" },
@@ -39,7 +41,7 @@ function saveText(filename: string, text: string): boolean {
  */
 export function launcherText(os: Os): string {
   const cjs = `${RAW_BASE}/lamplight.cjs`;
-  const site = typeof location === "undefined" ? "https://home-network-guardian.vercel.app" : location.origin;
+  const site = SITE;
   if (os === "windows") {
     return [
       "@echo off",
@@ -199,8 +201,8 @@ export function ScansSheet({ onClose }: { onClose: () => void }) {
           </li>
         </ol>
         <p className="mt-3 border-t border-line pt-2.5 text-[12.5px] leading-relaxed text-faint">
-          Be careful pasting commands from any website. This one downloads a single open-source file from GitHub that you can{" "}
-          <a className="font-semibold text-accent" href="https://github.com/Vishwanathanirv/home-network-guardian/blob/main/packages/scanner/src" target="_blank" rel="noreferrer">
+          Be careful pasting commands from any website. This one downloads a single open-source file from this site that you can{" "}
+          <a className="font-semibold text-accent" href={RAW} target="_blank" rel="noreferrer">
             read first
           </a>
           , and runs it with Node. It never asks for a password, only talks to devices on your Wi-Fi, and sends none of your data anywhere.

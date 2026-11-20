@@ -81,11 +81,11 @@ export function lagSpike(history: { internetMs?: number }[], ms?: number): { ms:
 }
 
 /**
- * Pages that may call the scanner's data endpoints from another address: the hosted app, its own
- * preview builds (which always end in the project owner's team suffix, so another Vercel project
- * named "home-network-guardian-something" doesn't match), and local development.
+ * Pages that may call the scanner's data endpoints from another address: the hosted app and local
+ * development. Preview deployments are deliberately not trusted: anyone can create a Vercel project
+ * named "home-network-guardian-something", so only the exact production address is allowed.
  */
-export const ALLOWED_ORIGIN = /^(https:\/\/home-network-guardian(-[a-z0-9-]+)?-vishwanathanirv-2900\.vercel\.app|https:\/\/home-network-guardian\.vercel\.app|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
+export const ALLOWED_ORIGIN = /^(https:\/\/home-network-guardian\.vercel\.app|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
 
 /** The data endpoints. Only these ever get CORS headers: the site's own files (whose page holds the key) never do. */
 const API = new Set(["/state", "/scan", "/fetch"]);
