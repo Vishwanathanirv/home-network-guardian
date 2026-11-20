@@ -6,12 +6,38 @@ const details = (page: Page) => page.getByRole("region", { name: "Details" });
 // Every flow runs under the production Content-Security-Policy (the preview server sends
 // vercel.json's headers); anything it blocks fails the test.
 const blocked = new WeakMap<Page, string[]>();
-test.beforeEach(({ page }) => {
+test.beforeEach(async ({ page }, info) => {
   const list: string[] = [];
   blocked.set(page, list);
   page.on("console", (m) => /Content.Security.Policy|Refused to/i.test(m.text()) && list.push(m.text()));
+  // Returning visitors have seen the first-visit briefing; it has its own tests below.
+  if (!info.title.startsWith("first visit")) await page.addInitScript(() => localStorage.setItem("lamplight-briefed", "1"));
 });
 test.afterEach(({ page }) => expect(blocked.get(page) ?? []).toEqual([]));
+
+test("first visit: the idea, then tonight's worst problem in one click", async ({ page }) => {
+  await page.goto("/");
+  const briefing = page.getByRole("dialog", { name: /which one to fix tonight/ });
+  await expect(briefing).toBeVisible();
+  await expect(briefing.getByRole("button", { name: "Show me tonight's worst problem →" })).toBeFocused();
+  await briefing.getByRole("button", { name: "Show me tonight's worst problem →" }).click();
+  await expect(briefing).toBeHidden();
+  await expect(page).toHaveURL(/\?device=/);
+  await page.reload();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("how it works follows one device from this scan through every step", async ({ page }) => {
+  await page.goto("/how");
+  const steps = page.getByRole("list", { name: "Steps" });
+  await expect(page.getByText(/^Found at /).first()).toBeVisible();
+  await steps.getByRole("button", { name: /Working out what each one is/ }).click();
+  await expect(page.getByText(/made by|a guess|likely|sure/).first()).toBeVisible();
+  await steps.getByRole("button", { name: /Deciding what matters/ }).click();
+  await steps.getByRole("button", { name: /Proving the worst ones/ }).click();
+  await page.getByRole("button", { name: "Open this device →" }).click();
+  await expect(page).toHaveURL(/\?device=/);
+});
 
 test("the site is served with strict security headers", async ({ page }) => {
   const r = await page.goto("/");

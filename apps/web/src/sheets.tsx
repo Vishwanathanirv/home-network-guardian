@@ -337,29 +337,137 @@ export function ChangesSheet({ onClose, onPick }: { onClose: () => void; onPick:
 
 /* ───────────── How it works */
 
-export function HowSheet({ onClose }: { onClose: () => void }) {
+export function HowSheet({ onClose, onPick }: { onClose: () => void; onPick: (ip: string) => void }) {
   const parts = [
     ["Finding devices", "The scanner knocks once on every address in your network, then reads your computer's ARP table, which lists even silent phones. Only the devices it found get the full check of 39 well-known services, so a scan takes seconds. It asks each one its name six ways (Bonjour, NetBIOS, LLMNR, UPnP, the router and your computer's own lookup), and checks how your Wi-Fi is locked. It only scans private addresses, gently, and runs entirely on your computer."],
     ["Working out what each one is", "The first half of a MAC address belongs to the maker, so Lamplight looks it up in the IEEE's public registry (about 40,000 entries). It adds the device's own name, the services it answers on (554 means a video stream, 9100 a printer, 62078 an iPhone) and the scanner's guess at its software. Each clue adds weight to a type, and the device's page says which clues were used and how sure it is."],
     ["Deciding what matters", "The checks are written for homes. Telnet on a camera and Android debugging on a TV box are urgent, because botnets take over exactly those. File sharing is normal on a NAS and odd on a light bulb. UPnP on the router, an unencrypted camera stream and a settings page without HTTPS are worth fixing this week. A short list of software versions with notorious holes is checked too, marked \"possible\" because makers sometimes fix a flaw without changing the version number."],
     ["Proving the worst ones", "Where it can, Lamplight checks instead of guessing, without ever using a password: does a camera hand over its video stream with no password, does an FTP server let in the public guest account, does a device still speak SMBv1, the protocol WannaCry spread through. These read nothing and change nothing."],
   ];
+  const { report } = useHome();
+  const places = usePlaces();
+  // The devices worth following: the riskiest first, so the first pick is the one you'd most want explained.
+  const rank = (x: DeviceReport) => (x.worst ? SEVERITY_RANK[x.worst] : -1);
+  const ranked = [...report.devices].sort((a, b) => rank(b) - rank(a) || b.ports.length - a.ports.length).slice(0, 8);
+  const [ip, setIp] = useState<string | null>(null);
+  const [step, setStep] = useState(0);
+  const d = ranked.find((x) => x.ip === ip) ?? ranked[0];
+  const probes = d?.details?.probes;
+  const proven = d ? d.issues.filter((i) => i.basis === "checked").length : 0;
+  const names = d ? [d.hostname && `network name "${d.hostname}"`, d.details?.name && `its own name "${d.details.name}"`, d.details?.netbios && `Windows name "${d.details.netbios.name}"`, d.details?.model && `model "${d.details.model}"`].filter(Boolean) : [];
+  const tone: Record<Severity, string> = { critical: "var(--risk)", high: "var(--risk)", medium: "var(--warn)", low: "var(--accent)", info: "var(--faint)" };
+  const hasProbe = !!probes && (probes.rtsp !== undefined || probes.ftpAnon !== undefined || probes.smb1 !== undefined);
+
   return (
     <div>
       <SubHeader title="How Lamplight works" onClose={onClose}>
-        <p className="mt-1 text-[13.5px] leading-snug text-muted">It answers three questions: what's on my network, which devices are risky, and what exactly do I do about it.</p>
+        <p className="mt-1 text-[13.5px] leading-snug text-muted">It answers three questions: what's on my network, which devices are risky, and what exactly do I do about it. Follow one device from this scan through all four steps.</p>
       </SubHeader>
-      <ol className="mt-4 space-y-4">
-        {parts.map(([t, b], i) => (
-          <li key={t} className="flex gap-3">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent text-[13px] font-bold text-panel">{i + 1}</span>
-            <div>
-              <h2 className="font-bold">{t}</h2>
-              <p className="mt-0.5 text-[14.5px] leading-relaxed text-muted">{b}</p>
+
+      {d && (
+        <>
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]" role="radiogroup" aria-label="Device to follow">
+            {ranked.map((x) => (
+              <button key={x.ip} role="radio" aria-checked={x.ip === d.ip} onClick={() => setIp(x.ip)} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold ${x.ip === d.ip ? "border-accent text-ink" : "border-line text-muted hover:text-ink"}`}>
+                <span className="h-2 w-2 rounded-full" style={{ background: x.worst ? tone[x.worst] : "var(--ok)" }} aria-hidden />
+                {displayName(x, places[keyOf(x)])}
+              </button>
+            ))}
+          </div>
+
+          <ol className="mt-3 grid grid-cols-4 gap-1" aria-label="Steps">
+            {parts.map(([t], i) => (
+              <li key={t}>
+                <button onClick={() => setStep(i)} aria-current={step === i ? "step" : undefined} className={`h-full w-full rounded-xl border px-2 py-1.5 text-left text-[12px] font-semibold leading-tight ${step === i ? "border-accent bg-[color-mix(in_oklab,var(--accent)_12%,transparent)]" : "border-line text-muted hover:text-ink"}`}>
+                  <span className="block text-[11px] text-faint">{i + 1}</span>
+                  {t}
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          <section className="mt-3 rounded-2xl border border-line p-3.5" aria-live="polite">
+            <h2 className="font-bold">
+              {step + 1}. {parts[step][0]}
+            </h2>
+            <p className="mt-1 text-[13.5px] leading-relaxed text-muted">{parts[step][1]}</p>
+            <div className="mt-3 border-t border-line pt-3 text-[13.5px]">
+              <p className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-faint">For {displayName(d, places[keyOf(d)])}</p>
+              {step === 0 && (
+                <ul className="mt-1.5 space-y-1">
+                  <li>
+                    Found at <span className="font-mono">{d.ip}</span>
+                    {d.mac && (
+                      <>
+                        , network card <span className="font-mono">{d.mac}</span>
+                      </>
+                    )}
+                  </li>
+                  <li>{d.ports.length ? `Answers on ${d.ports.length} service${d.ports.length === 1 ? "" : "s"}: ${d.ports.slice(0, 6).map((p) => `${serviceName(p)} (${p.port})`).join(", ")}${d.ports.length > 6 ? "…" : ""}` : "Answers on no services: quiet, which is good."}</li>
+                  {names.length > 0 && <li>Calls itself {names.join(", ")}</li>}
+                </ul>
+              )}
+              {step === 1 && (
+                <ul className="mt-1.5 space-y-1">
+                  <li>
+                    {KIND_NAME[d.kind]}, <span className="text-muted">{d.confidence === "guess" ? "a guess" : d.confidence}</span>
+                    {d.vendor && <> · made by {d.vendor}</>}
+                  </li>
+                  {d.reasons.slice(0, 5).map((r) => (
+                    <li key={r} className="text-muted">
+                      · {r}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {step === 2 &&
+                (d.issues.length ? (
+                  <ul className="mt-1.5 space-y-1.5">
+                    {[...d.issues]
+                      .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
+                      .slice(0, 6)
+                      .map((i) => (
+                        <li key={i.id + (i.port ?? "")} className="flex gap-2">
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: tone[i.severity] }} aria-hidden />
+                          <span>
+                            <span className="font-semibold">{i.title}</span> <span className="text-muted">· {WHEN[i.severity].toLowerCase()}</span>
+                            {i.basis === "version" && <span className="text-faint"> · possible, from the version it reports</span>}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1.5 text-[var(--ok)]">Nothing to fix on this one.</p>
+                ))}
+              {step === 3 &&
+                (hasProbe ? (
+                  <ul className="mt-1.5 space-y-1">
+                    {probes!.rtsp && <li>{probes!.rtsp.open ? "Its video stream answered without a password: proven open." : "Its video stream asked for a password: good."}</li>}
+                    {probes!.ftpAnon !== undefined && <li>{probes!.ftpAnon ? "Its FTP server let the public guest account in: proven." : "Its FTP server turned the guest account away: good."}</li>}
+                    {probes!.smb1 !== undefined && <li>{probes!.smb1 ? "It still speaks SMBv1: proven." : "It no longer speaks SMBv1: good."}</li>}
+                    {proven > 0 && <li className="text-muted">{proven} of its problems are proven, not guessed.</li>}
+                  </ul>
+                ) : (
+                  <p className="mt-1.5 text-muted">Nothing on this device needed proving: none of the read-only checks apply to the services it answers on.</p>
+                ))}
             </div>
-          </li>
-        ))}
-      </ol>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="btn" disabled={step === 0} onClick={() => setStep((n) => n - 1)}>
+                ← Back
+              </button>
+              {step < parts.length - 1 ? (
+                <button className="btn primary" onClick={() => setStep((n) => n + 1)}>
+                  Next: {parts[step + 1][0]} →
+                </button>
+              ) : (
+                <button className="btn primary" onClick={() => onPick(d.ip)}>
+                  Open this device →
+                </button>
+              )}
+            </div>
+          </section>
+        </>
+      )}
       <Section title="What it can't tell you">
         <ul className="list-disc space-y-1.5 pl-5 text-[14.5px] leading-relaxed text-muted">
           <li>Whether a password is weak. Lamplight never uses or guesses passwords.</li>

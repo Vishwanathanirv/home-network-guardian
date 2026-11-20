@@ -18,6 +18,7 @@ import { FloorPlan, layout, planHeight, W } from "./plan";
 import { NetworkSheet } from "./network";
 import { ScansSheet } from "./run";
 import { ChangesSheet, DeviceRow, HomeSheet, HowSheet } from "./sheets";
+import { Briefing, useBriefing } from "./intro";
 
 const useMedia = (q: string) =>
   useSyncExternalStore(
@@ -72,6 +73,7 @@ function App() {
     }
   };
   const [palette, setPalette] = useState(false);
+  const [briefing, setBriefing] = useBriefing();
   const places = usePlaces();
   const done = useDone();
   const [params] = useSearchParams();
@@ -140,6 +142,7 @@ function App() {
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
+      if (briefing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPalette((x) => !x);
@@ -175,7 +178,7 @@ function App() {
   else if (page === "/changes") body = <ChangesSheet onClose={close} onPick={pick} />;
   else if (page === "/scans") body = <ScansSheet onClose={close} />;
   else if (page === "/network") body = <NetworkSheet onClose={close} onPick={pick} />;
-  else if (page === "/how") body = <HowSheet onClose={close} />;
+  else if (page === "/how") body = <HowSheet onClose={close} onPick={pick} />;
   else if (page === "/live") body = <LiveSheet onClose={close} onPick={pick} />;
   else if (matches)
     body = (
@@ -253,8 +256,12 @@ function App() {
     </div>
   );
 
+  // Try it: the riskiest device in the home, opened on the plan.
+  const worst = [...report.devices].sort((a, b) => (b.worst ? SEVERITY_RANK[b.worst] : -1) - (a.worst ? SEVERITY_RANK[a.worst] : -1))[0];
+
   return (
-    <div className="relative h-dvh overflow-hidden">
+    <>
+    <div className="relative h-dvh overflow-hidden" inert={briefing}>
       {view === "atom" ? (
         <Atom mapRef={map} insets={insets} devices={report.devices} gateway={report.scan.gateway} selected={selected} onPick={pick} worstOf={worstOf} isNew={isNew} dim={(d) => !!hit && !hit.has(d.ip)} onNucleus={() => navigate("/network")} />
       ) : (
@@ -307,7 +314,8 @@ function App() {
             { id: "changes", t: "What changed", hint: "joined compare", run: () => navigate("/changes") },
             { id: "fit", t: "Show the whole house", hint: "zoom fit", run: () => map.current?.fit() },
             ...FILTERS.map((f) => ({ id: `f-${f.id}`, t: `Show only: ${f.t}`, hint: "filter", run: () => setFilter(f.id) })),
-            { id: "how", t: "How it works", hint: "help", run: () => navigate("/how") },
+            { id: "how", t: "How it works", hint: "help walkthrough", run: () => navigate("/how") },
+            { id: "idea", t: "What is Lamplight?", hint: "idea about intro", run: () => setBriefing(true) },
           ] satisfies Action[]
         }
       />
@@ -325,6 +333,11 @@ function App() {
       {wide && (
         <button data-ui onClick={() => setPalette(true)} className="glass absolute right-[4.5rem] top-[3.75rem] z-10 flex h-9 items-center gap-2 rounded-full px-3 text-[12.5px] font-semibold text-muted hover:text-ink" aria-label="Go to anything (Ctrl K)">
           Go to <span className="rounded-md border border-line px-1.5 font-mono text-[11px]">Ctrl K</span>
+        </button>
+      )}
+      {wide && (
+        <button data-ui onClick={() => setBriefing(true)} className="glass absolute right-[4.5rem] top-[6.5rem] z-10 flex h-9 items-center rounded-full px-3 text-[12.5px] font-semibold text-muted hover:text-ink">
+          What is Lamplight?
         </button>
       )}
       <div data-ui className={`absolute right-3 z-10 flex flex-col gap-2 ${wide ? "top-3" : "top-[7.5rem]"}`}>
@@ -443,6 +456,24 @@ function App() {
         </>
       )}
     </div>
+    {briefing && (
+      <Briefing
+        onClose={() => setBriefing(false)}
+        onTry={() => {
+          setBriefing(false);
+          if (worst) pick(worst.ip);
+        }}
+        onHow={() => {
+          setBriefing(false);
+          navigate("/how");
+        }}
+        onScan={() => {
+          setBriefing(false);
+          navigate("/scans");
+        }}
+      />
+    )}
+    </>
   );
 }
 

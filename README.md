@@ -77,6 +77,8 @@ Many homes now have more than a dozen connected devices, and few people could na
 
 ## Try it
 
+On the first visit a short briefing explains the idea over the example home; **Show me tonight's worst problem** opens the riskiest device on the plan, and **What is Lamplight?** (or the Ctrl K menu) brings it back. **How it works** follows one device from the current scan through the four steps (finding it, working out what it is, deciding what matters, proving the worst problems) with that device's real data at each step.
+
 The live demo shows a made-up family home scanned twice, a week apart. Since then, an Android TV box has joined with debugging left on, the NAS has started serving FTP, and an unidentified phone is on the doorstep. The demo goes through the same nmap parser as a real scan.
 
 To see your own home, tap **Scan your home**:

@@ -610,3 +610,26 @@ body {
     transition: none;
   }
 }
+
+/* The briefing's house: the risky window pulses like a lamp left on. */
+@keyframes lamp-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+.lamp-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lamp-pulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lamp-halo {
+    animation: none;
+  }
+}
