@@ -124,7 +124,7 @@ function useScannerSha(): string | null {
   useEffect(() => {
     shaRequest ??= fetch(`${RAW}.sha256`, { cache: "no-cache" })
       .then((r) => (r.ok ? r.text() : ""))
-      .then((t) => t.match(/^[0-9a-f]{64}/)?.[0] ?? null)
+      .then((t) => t.match(/^[0-9a-f]{64}(?![0-9a-f])/)?.[0] ?? null)
       .catch(() => null);
     let live = true;
     void shaRequest.then((v) => live && setSha(v));

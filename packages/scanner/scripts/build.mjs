@@ -12,8 +12,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const pkg = resolve(here, "..");
 const root = resolve(pkg, "../..");
 const dist = join(root, "apps/web/dist");
-// The scanner and its launchers live in the site's folder too; they don't belong inside the scanner.
-const SKIP = /^(lamplight\.cjs|lamplight-[\w-]+\.(cmd|command))$/;
+// The scanner, its checksum and its launchers live in the site's folder too; they don't belong
+// inside the scanner (embedding the checksum would make every build depend on the one before it).
+const SKIP = /^(lamplight\.cjs(\.sha256)?|lamplight-[\w-]+\.(cmd|command))$/;
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
